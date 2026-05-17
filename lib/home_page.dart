@@ -3,7 +3,6 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:smart_wearables_app/connection/stream.dart';
 import 'package:syncfusion_flutter_charts/charts.dart';
-import 'package:smart_wearables_app/utils/sensor_utils.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key, required this.title, required this.stream});
