@@ -1,7 +1,5 @@
 import 'package:flutter/material.dart';
-import '../theme.dart';
-import '../widgets/circular_gauge.dart';
-import '../widgets/stat_card.dart';
+import '../app_theme.dart';
 
 class FitnessPage extends StatelessWidget {
   const FitnessPage({super.key});
@@ -11,215 +9,295 @@ class FitnessPage extends StatelessWidget {
     return Scaffold(
       backgroundColor: AppColors.background,
       body: SafeArea(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text('GOOD MORNING',
-                          style: TextStyle(
-                              fontSize: 11,
-                              letterSpacing: 1.5,
-                              color: AppColors.textSecondary,
-                              fontWeight: FontWeight.w600)),
-                      const SizedBox(height: 2),
-                      const Text('Fitness\nToday',
-                          style: TextStyle(
-                              fontSize: 28,
-                              fontWeight: FontWeight.bold,
-                              color: AppColors.textPrimary,
-                              height: 1.1)),
-                    ],
-                  ),
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 12, vertical: 6),
-                    decoration: BoxDecoration(
-                      color: AppColors.cyan.withOpacity(0.15),
-                      borderRadius: BorderRadius.circular(20),
-                      border:
-                          Border.all(color: AppColors.cyan.withOpacity(0.3)),
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Container(
-                          width: 6,
-                          height: 6,
-                          decoration: const BoxDecoration(
-                              color: AppColors.cyan, shape: BoxShape.circle),
-                        ),
-                        const SizedBox(width: 6),
-                        const Text('BLE\nCONNECTED',
-                            textAlign: TextAlign.center,
-                            style: TextStyle(
-                                fontSize: 10,
-                                color: AppColors.cyan,
-                                fontWeight: FontWeight.bold,
-                                height: 1.2)),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 28),
-              Center(
-                child: CircularGauge(
-                  value: 7842,
-                  maxValue: 10000,
-                  color: AppColors.cyan,
-                  trackColor: const Color(0xFF1E2A3A),
-                  strokeWidth: 14,
-                  size: 200,
-                  startAngle: -220,
-                  sweepAngle: 260,
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      const Text('7,842',
-                          style: TextStyle(
-                              fontSize: 32,
-                              fontWeight: FontWeight.bold,
-                              color: AppColors.textPrimary)),
-                      const Text('STEPS',
-                          style: TextStyle(
-                              fontSize: 11,
-                              letterSpacing: 1.5,
-                              color: AppColors.textSecondary)),
-                      const SizedBox(height: 4),
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 10, vertical: 4),
-                        decoration: BoxDecoration(
-                          color: AppColors.cyan.withOpacity(0.15),
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        child: const Text('78% of goal',
-                            style: TextStyle(
-                                fontSize: 11,
-                                color: AppColors.cyan,
-                                fontWeight: FontWeight.w600)),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-              const SizedBox(height: 24),
-              Row(
-                children: const [
-                  StatCard(emoji: '🔥', value: '342 kcal', label: 'Calories'),
-                  SizedBox(width: 10),
-                  StatCard(emoji: '📍', value: '5.8 km', label: 'Distance'),
-                  SizedBox(width: 10),
-                  StatCard(emoji: '⚡', value: '48 min', label: 'Active'),
-                ],
-              ),
-              const SizedBox(height: 16),
-              _WeeklyActivityCard(),
-              const SizedBox(height: 16),
-              InfoBanner(
-                emoji: '🎯',
-                title: '2,158 steps to daily goal',
-                subtitle: '~18 min of brisk walking',
-                color: AppColors.cyan,
-                showArrow: true,
-              ),
-              const SizedBox(height: 16),
-            ],
-          ),
+        child: ListView(
+          padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
+          children: [
+            _buildHeader(),
+            const SizedBox(height: 20),
+            _buildStepRing(),
+            const SizedBox(height: 20),
+            _buildStatCards(),
+            const SizedBox(height: 20),
+            const SectionLabel('Activity'),
+            const SizedBox(height: 6),
+            _buildWeeklyChart(),
+            const SizedBox(height: 20),
+            _buildHeartRateCard(),
+            const SizedBox(height: 8),
+          ],
         ),
       ),
     );
   }
-}
 
-class _WeeklyActivityCard extends StatelessWidget {
-  final List<Map<String, dynamic>> days = const [
-    {'label': 'M', 'height': 0.4},
-    {'label': 'T', 'height': 0.6},
-    {'label': 'W', 'height': 0.5},
-    {'label': 'T', 'height': 0.75},
-    {'label': 'F', 'height': 0.85, 'active': true},
-    {'label': 'S', 'height': 0.2},
-    {'label': 'S', 'height': 0.0},
-  ];
-
-  const _WeeklyActivityCard();
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: AppColors.card,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: AppColors.cardBorder),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+  Widget _buildHeader() {
+    return Row(
+      children: [
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: const [
-              Text('Weekly Activity',
-                  style: TextStyle(
-                      color: AppColors.textPrimary,
-                      fontWeight: FontWeight.bold,
-                      fontSize: 15)),
-              Text('This week',
-                  style:
-                      TextStyle(color: AppColors.textSecondary, fontSize: 12)),
+              Text(
+                'Hello, Alex',
+                style: TextStyle(
+                  fontSize: 22,
+                  fontWeight: FontWeight.bold,
+                  color: AppColors.primary,
+                ),
+              ),
+              SizedBox(height: 2),
+              Text(
+                'Thursday, Oct 24',
+                style: TextStyle(fontSize: 14, color: AppColors.muted),
+              ),
             ],
           ),
-          const SizedBox(height: 20),
-          SizedBox(
-            height: 80,
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.end,
-              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-              children: days.map((day) {
-                final isActive = day['active'] == true;
-                final frac = (day['height'] as double);
-                return Column(
+        ),
+        Stack(
+          children: [
+            CircleAvatar(
+              radius: 22,
+              backgroundColor: AppColors.border,
+              child: const Text(
+                'AJ',
+                style: TextStyle(
+                  color: AppColors.primary,
+                  fontWeight: FontWeight.w600,
+                  fontSize: 15,
+                ),
+              ),
+            ),
+            Positioned(
+              bottom: 0,
+              right: 0,
+              child: Container(
+                width: 12,
+                height: 12,
+                decoration: BoxDecoration(
+                  color: AppColors.success,
+                  shape: BoxShape.circle,
+                  border: Border.all(color: AppColors.background, width: 2),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  Widget _buildStepRing() {
+    const steps = 8432;
+    const goal = 10000;
+    return Center(
+      child: SizedBox(
+        width: 200,
+        height: 200,
+        child: Stack(
+          alignment: Alignment.center,
+          children: [
+            RingGauge(
+              value: steps / goal,
+              size: 200,
+              strokeWidth: 14,
+              color: AppColors.accent,
+            ),
+            Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: const [
+                Text(
+                  '8,432',
+                  style: TextStyle(
+                    fontSize: 38,
+                    fontWeight: FontWeight.bold,
+                    color: AppColors.primary,
+                  ),
+                ),
+                Text(
+                  'STEPS',
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                    color: AppColors.muted,
+                    letterSpacing: 1.5,
+                  ),
+                ),
+                Text(
+                  '/ 10,000 goal',
+                  style: TextStyle(fontSize: 12, color: AppColors.inactive),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildStatCards() {
+    return Row(
+      children: [
+        Expanded(child: _statCard(Icons.local_fire_department_rounded, '487', 'kcal', const Color(0xFFF97316))),
+        const SizedBox(width: 10),
+        Expanded(child: _statCard(Icons.timer_outlined, '34', 'min', AppColors.accent)),
+        const SizedBox(width: 10),
+        Expanded(child: _statCard(Icons.place_outlined, '4.2', 'km', AppColors.success)),
+      ],
+    );
+  }
+
+  Widget _statCard(IconData icon, String value, String unit, Color iconColor) {
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 8),
+      decoration: appCardDecoration,
+      child: Column(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              color: AppColors.background,
+              shape: BoxShape.circle,
+            ),
+            child: Icon(icon, color: iconColor, size: 20),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            value,
+            style: const TextStyle(
+              fontSize: 20,
+              fontWeight: FontWeight.bold,
+              color: AppColors.primary,
+            ),
+          ),
+          Text(unit, style: const TextStyle(fontSize: 12, color: AppColors.muted)),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildWeeklyChart() {
+    final days = [
+      ('M', 0.40),
+      ('T', 0.65),
+      ('W', 0.85),
+      ('T', 0.45),
+      ('F', 0.90),
+      ('S', 0.30),
+      ('S', 0.84),
+    ];
+    return AppCard(
+      padding: const EdgeInsets.all(16),
+      child: SizedBox(
+        height: 130,
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.end,
+          children: days.asMap().entries.map((e) {
+            final isToday = e.key == 6;
+            final day = e.value.$1;
+            final pct = e.value.$2;
+            return Expanded(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 3),
+                child: Column(
                   mainAxisAlignment: MainAxisAlignment.end,
                   children: [
                     Expanded(
                       child: Align(
                         alignment: Alignment.bottomCenter,
-                        child: Container(
-                          width: 24,
-                          height: frac == 0 ? 4 : 60 * frac,
-                          decoration: BoxDecoration(
-                            color: isActive
-                                ? AppColors.cyan
-                                : frac == 0
-                                    ? AppColors.cardBorder
-                                    : AppColors.cyan.withOpacity(0.35),
-                            borderRadius: BorderRadius.circular(6),
+                        child: FractionallySizedBox(
+                          heightFactor: pct,
+                          child: Container(
+                            decoration: BoxDecoration(
+                              color: isToday ? AppColors.accent : const Color(0xFF93C5FD),
+                              borderRadius: const BorderRadius.vertical(top: Radius.circular(6)),
+                            ),
                           ),
                         ),
                       ),
                     ),
-                    const SizedBox(height: 8),
-                    Text(day['label'] as String,
-                        style: TextStyle(
-                            fontSize: 12,
-                            fontWeight: isActive ? FontWeight.bold : FontWeight.normal,
-                            color: isActive
-                                ? AppColors.cyan
-                                : AppColors.textSecondary)),
+                    const SizedBox(height: 6),
+                    Text(
+                      day,
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w700,
+                        color: isToday ? AppColors.accent : AppColors.inactive,
+                      ),
+                    ),
                   ],
-                );
-              }).toList(),
+                ),
+              ),
+            );
+          }).toList(),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildHeartRateCard() {
+    return AppCard(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: AppColors.background,
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: const Icon(Icons.favorite_rounded, color: Color(0xFFEF4444), size: 24),
             ),
-          ),
-        ],
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Heart Rate',
+                    style: TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w500,
+                      color: AppColors.primary,
+                    ),
+                  ),
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.baseline,
+                    textBaseline: TextBaseline.alphabetic,
+                    children: const [
+                      Text(
+                        '72',
+                        style: TextStyle(
+                          fontSize: 24,
+                          fontWeight: FontWeight.bold,
+                          color: AppColors.primary,
+                        ),
+                      ),
+                      SizedBox(width: 4),
+                      Text('bpm', style: TextStyle(fontSize: 14, color: AppColors.muted)),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+              decoration: BoxDecoration(
+                color: AppColors.border,
+                borderRadius: BorderRadius.circular(99),
+              ),
+              child: const Text(
+                'REST',
+                style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w700,
+                  color: AppColors.muted,
+                  letterSpacing: 1.2,
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

@@ -360,3 +360,178 @@ class _ConnectionPageState extends State<ConnectionPage> {
     );
   }
 }
+
+// import 'dart:async';
+// import 'package:flutter/material.dart';
+// import 'package:smart_wearables_app/connection/stream.dart';
+// import 'package:smart_wearables_app/home_page.dart';
+// import 'package:smart_wearables_app/main_shell.dart';
+
+// class ConnectionPage extends StatefulWidget {
+//   const ConnectionPage({super.key, required this.title});
+//   final String title;
+
+//   @override
+//   State<ConnectionPage> createState() => _ConnectionPageState();
+// }
+
+// class _ConnectionPageState extends State<ConnectionPage> {
+//   MyStream incomingStream = MyStream();
+
+//   void _showWebNotSupportedDialog() {
+//     showDialog<void>(
+//       context: context,
+//       builder: (BuildContext context) => AlertDialog(
+//         title: const Text('Bluetooth Not Available'),
+//         content: const SingleChildScrollView(
+//           child: ListBody(
+//             children: <Widget>[
+//               Text('Bluetooth Low Energy (BLE) is not supported in the web browser.'),
+//               Text(''),
+//               Text('To use this app with a real BLE device, please run it on an Android or iOS device.'),
+//               Text(''),
+//               Text('You can tap "Demo Mode" below to explore the sensor data visualization with simulated data.'),
+//             ],
+//           ),
+//         ),
+//         actions: <Widget>[
+//           TextButton(
+//             child: const Text('Close'),
+//             onPressed: () => Navigator.of(context).pop(),
+//           ),
+//           TextButton(
+//             child: const Text('Demo Mode'),
+//             onPressed: () {
+//               Navigator.of(context).pop();
+//               _startDemoMode();
+//             },
+//           ),
+//         ],
+//       ),
+//     );
+//   }
+
+//   void _startDemoMode() {
+//     Navigator.push(
+//       context,
+//       MaterialPageRoute(
+//         builder: (context) => MainShell(stream: incomingStream),
+//       ),
+//     );
+
+//     Timer.periodic(const Duration(milliseconds: 50), (timer) {
+//       if (!mounted) {
+//         timer.cancel();
+//         return;
+//       }
+//       final now = DateTime.now().millisecondsSinceEpoch;
+//       final t = now / 500.0;
+
+//       final int rawXa = (32767 * 0.5 * (0.7 * _sin(t) + 0.3 * _sin(3 * t))).toInt().clamp(-32768, 32767);
+//       final int rawYa = (32767 * 0.4 * _sin(t + 1.0)).toInt().clamp(-32768, 32767);
+//       final int rawZa = (32767 * (0.3 * _sin(t * 0.5) + 0.6)).toInt().clamp(-32768, 32767);
+
+//       List<int> accelPacket = [123, 65];
+//       accelPacket.addAll(_int16ToBytes(rawXa));
+//       accelPacket.addAll(_int16ToBytes(rawYa));
+//       accelPacket.addAll(_int16ToBytes(rawZa));
+//       while (accelPacket.length < 19) accelPacket.add(0);
+//       accelPacket.add(125);
+//       incomingStream.setNum(accelPacket);
+//     });
+
+//     Timer.periodic(const Duration(milliseconds: 50), (timer) {
+//       if (!mounted) {
+//         timer.cancel();
+//         return;
+//       }
+//       final now = DateTime.now().millisecondsSinceEpoch;
+//       final t = now / 500.0;
+
+//       final int rawXg = (175.0 * 45 * _sin(t * 0.8)).toInt().clamp(-32768, 32767);
+//       final int rawYg = (175.0 * 30 * _sin(t * 1.2 + 0.5)).toInt().clamp(-32768, 32767);
+//       final int rawZg = (175.0 * 20 * _sin(t * 0.6 + 1.0)).toInt().clamp(-32768, 32767);
+
+//       List<int> gyroPacket = [123, 71];
+//       gyroPacket.addAll(_int16ToBytes(rawXg));
+//       gyroPacket.addAll(_int16ToBytes(rawYg));
+//       gyroPacket.addAll(_int16ToBytes(rawZg));
+//       while (gyroPacket.length < 19) gyroPacket.add(0);
+//       gyroPacket.add(125);
+//       incomingStream.setNum(gyroPacket);
+//     });
+//   }
+
+//   double _sin(double x) {
+//     return (x - x * x * x / 6.0 + x * x * x * x * x / 120.0);
+//   }
+
+//   List<int> _int16ToBytes(int value) {
+//     return [value & 0xFF, (value >> 8) & 0xFF];
+//   }
+
+//   @override
+//   Widget build(BuildContext context) {
+//     return Scaffold(
+//       appBar: AppBar(
+//         backgroundColor: Theme.of(context).colorScheme.inversePrimary,
+//         title: Text(widget.title),
+//       ),
+//       body: Center(
+//         child: Padding(
+//           padding: const EdgeInsets.all(32.0),
+//           child: Column(
+//             mainAxisAlignment: MainAxisAlignment.center,
+//             children: [
+//               const Icon(Icons.bluetooth_disabled, size: 80, color: Colors.grey),
+//               const SizedBox(height: 24),
+//               Text(
+//                 'Smart Wearables App',
+//                 style: Theme.of(context).textTheme.headlineMedium?.copyWith(
+//                   fontWeight: FontWeight.bold,
+//                 ),
+//                 textAlign: TextAlign.center,
+//               ),
+//               const SizedBox(height: 16),
+//               const Text(
+//                 'This app connects to a BLE wearable device (RN4871) to visualize real-time accelerometer and gyroscope data.',
+//                 textAlign: TextAlign.center,
+//                 style: TextStyle(fontSize: 16, color: Colors.grey),
+//               ),
+//               const SizedBox(height: 32),
+//               Card(
+//                 child: Padding(
+//                   padding: const EdgeInsets.all(16.0),
+//                   child: Column(
+//                     children: [
+//                       const Icon(Icons.info_outline, color: Colors.blue),
+//                       const SizedBox(height: 8),
+//                       const Text(
+//                         'Bluetooth is not available in the web browser. For real device connection, use the Android or iOS app.',
+//                         textAlign: TextAlign.center,
+//                       ),
+//                     ],
+//                   ),
+//                 ),
+//               ),
+//               const SizedBox(height: 32),
+//               ElevatedButton.icon(
+//                 onPressed: _startDemoMode,
+//                 icon: const Icon(Icons.play_circle_outline),
+//                 label: const Text('Launch Demo Mode'),
+//                 style: ElevatedButton.styleFrom(
+//                   padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
+//                 ),
+//               ),
+//               const SizedBox(height: 12),
+//               TextButton(
+//                 onPressed: _showWebNotSupportedDialog,
+//                 child: const Text('Learn more about BLE support'),
+//               ),
+//             ],
+//           ),
+//         ),
+//       ),
+//     );
+//   }
+// }
