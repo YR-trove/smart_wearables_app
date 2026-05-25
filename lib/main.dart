@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:smart_wearables_app/connection/connection_page.dart';
-
 void main() {
   runApp(const MyApp());
 }
