@@ -1,8 +1,20 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import 'package:smart_wearables_app/connection/connection_page.dart';
+import 'package:smart_wearables_app/data/session_store.dart';
 
-void main() {
-  runApp(const MyApp());
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+
+  final sessionStore = SessionStore();
+  await sessionStore.init();   // opens DB, recovers any crashed session
+
+  runApp(
+    ChangeNotifierProvider.value(
+      value: sessionStore,
+      child: const MyApp(),
+    ),
+  );
 }
 
 class MyApp extends StatelessWidget {
