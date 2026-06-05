@@ -14,17 +14,15 @@ import 'package:smart_wearables_app/pages/settings_page.dart';
 import 'package:smart_wearables_app/pages/stress_page.dart';
 
 /// Top-level shell shown while a BLE device is connected.
-/// Owns the [SensorBuffer] (dev-mode ring buffer) and routes every
-/// validated BLE packet to both the buffer (for live charts) and the
-/// [SessionStore] (for DB persistence).
 class MainShell extends StatefulWidget {
   final MyStream stream;
+  final String   deviceId;
 
-  /// The BLE device ID returned by [ConnectionPage]. Used by [SessionStore]
-  /// to tag the recording session.
-  final String deviceId;
-
-  const MainShell({super.key, required this.stream, required this.deviceId});
+  const MainShell({
+    super.key,
+    required this.stream,
+    required this.deviceId,
+  });
 
   @override
   State<MainShell> createState() => _MainShellState();
@@ -46,16 +44,13 @@ class _MainShellState extends State<MainShell> {
     _sub = widget.stream.controller.stream.listen(_onPacket);
   }
 
-  // ── Session start/end ─────────────────────────────────────────
+  // ── Session start/end ─────────────────────────────────────────────────────
 
   void _startSession() {
-    // Use addPostFrameCallback so the Provider tree is ready before the
-    // async call. Errors are logged; the app continues even if DB fails.
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       try {
-        final store = context.read<SessionStore>();
-        await store.startSession(widget.deviceId);
-        debugPrint('MainShell: session started for device ${widget.deviceId}');
+        await context.read<SessionStore>().startSession(widget.deviceId);
+        debugPrint('MainShell: session started (${widget.deviceId})');
       } catch (e) {
         debugPrint('MainShell: startSession error — $e');
       }
@@ -65,24 +60,23 @@ class _MainShellState extends State<MainShell> {
   @override
   void dispose() {
     _sub?.cancel();
-    // End the session when the shell is popped (device disconnect / back nav).
-    final store = context.read<SessionStore>();
-    store.endSession().catchError(
-      (e) => debugPrint('MainShell: endSession error — $e'));
+    context.read<SessionStore>()
+        .endSession()
+        .catchError((e) => debugPrint('MainShell: endSession error — $e'));
     _buffer.dispose();
     super.dispose();
   }
 
-  // ── Packet router ───────────────────────────────────────────────
+  // ── Packet router ─────────────────────────────────────────────────────────
 
   void _onPacket(List<int> data) {
     if (data.length < 20) return;
-    final type = String.fromCharCode(data[1]);
+    final type  = String.fromCharCode(data[1]);
     final store = context.read<SessionStore>();
-    final ts = DateTime.now();
+    final ts    = DateTime.now();
 
     switch (type) {
-      // ── IMU: Accelerometer ─────────────────────────────────────
+      // ── Accelerometer ────────────────────────────────────────────────────
       case 'A':
         final ax = _int16le(data, 2) * kAccelSens;
         final ay = _int16le(data, 4) * kAccelSens;
@@ -91,14 +85,13 @@ class _MainShellState extends State<MainShell> {
         _buffer.addAccel(ts, ax, ay, az);
         store.onImuPacket(ImuSample(
           sessionId: store.activeSession?.id ?? 0,
-          timestamp: ts,
-          type: 'A',
+          timestamp: ts, type: 'A',
           x: ax, y: ay, z: az,
           stepCount: stepCount,
         ));
         break;
 
-      // ── IMU: Gyroscope ────────────────────────────────────────
+      // ── Gyroscope ────────────────────────────────────────────────────────
       case 'G':
         final gx = _int16le(data, 2) * kGyroSens;
         final gy = _int16le(data, 4) * kGyroSens;
@@ -106,34 +99,33 @@ class _MainShellState extends State<MainShell> {
         _buffer.addGyro(ts, gx, gy, gz);
         store.onImuPacket(ImuSample(
           sessionId: store.activeSession?.id ?? 0,
-          timestamp: ts,
-          type: 'G',
+          timestamp: ts, type: 'G',
           x: gx, y: gy, z: gz,
         ));
         break;
 
-      // ── Light sensor ───────────────────────────────────────────
-      // TODO: confirm byte offsets once firmware defines 'L' packet layout.
+      // ── Light sensor ─────────────────────────────────────────────────────
+      // TODO: confirm byte offsets once firmware documents the 'L' packet.
       case 'L':
-        final uvRisk          = data[2].toDouble();
-        final blueLightInt    = _uint16le(data, 3).toDouble();
-        final blueLightRatio  = data[5] / 100.0;   // byte → 0–255 / 100 ratio
-        final sunLikeIndex    = data[6].toDouble();
-        final metric1         = _int16le(data, 7).toDouble();
+        final uvRisk         = data[2].toDouble();
+        final blueLightInt   = _uint16le(data, 3).toDouble();
+        final blueLightRatio = data[5] / 100.0;
+        final sunLikeIndex   = data[6].toDouble();
+        final metric1        = _int16le(data, 7).toDouble();
         _buffer.addLight(ts, uvRisk, blueLightInt, blueLightRatio, sunLikeIndex);
         store.onLightPacket(LightSample(
-          sessionId:        store.activeSession?.id ?? 0,
-          timestamp:        ts,
-          uvRisk:           uvRisk,
+          sessionId: store.activeSession?.id ?? 0,
+          timestamp: ts,
+          uvRisk: uvRisk,
           blueLightIntensity: blueLightInt,
-          blueLightRatio:   blueLightRatio,
-          sunLikeIndex:     sunLikeIndex,
-          metric1:          metric1,
+          blueLightRatio: blueLightRatio,
+          sunLikeIndex: sunLikeIndex,
+          metric1: metric1,
         ));
         break;
 
-      // ── Microphone ───────────────────────────────────────────────
-      // TODO: confirm byte offsets once firmware defines 'M' packet layout.
+      // ── Microphone ───────────────────────────────────────────────────────
+      // TODO: confirm byte offsets once firmware documents the 'M' packet.
       case 'M':
         final noiseLevel = _uint16le(data, 2).toDouble();
         final noiseTime  = _uint16le(data, 4).toDouble();
@@ -149,11 +141,11 @@ class _MainShellState extends State<MainShell> {
         break;
 
       default:
-        debugPrint('MainShell: unknown packet type “$type”');
+        debugPrint('MainShell: unknown packet type "$type"');
     }
   }
 
-  // ── Little-endian helpers ───────────────────────────────────────
+  // ── Little-endian helpers ─────────────────────────────────────────────────
 
   static int _int16le(List<int> d, int i) {
     int v = d[i] | (d[i + 1] << 8);
@@ -163,14 +155,14 @@ class _MainShellState extends State<MainShell> {
 
   static int _uint16le(List<int> d, int i) => d[i] | (d[i + 1] << 8);
 
-  // ── UI ────────────────────────────────────────────────────────────────
+  // ── UI ───────────────────────────────────────────────────────────────────
 
   static const _pages = [
-    _PageMeta(icon: Icons.show_chart,    label: 'Live'),
-    _PageMeta(icon: Icons.directions_run,label: 'Fitness'),
-    _PageMeta(icon: Icons.wb_sunny,      label: 'Light'),
+    _PageMeta(icon: Icons.show_chart,       label: 'Live'),
+    _PageMeta(icon: Icons.directions_run,   label: 'Fitness'),
+    _PageMeta(icon: Icons.wb_sunny,         label: 'Light'),
     _PageMeta(icon: Icons.self_improvement, label: 'Stress'),
-    _PageMeta(icon: Icons.settings,      label: 'Settings'),
+    _PageMeta(icon: Icons.settings,         label: 'Settings'),
   ];
 
   @override
@@ -191,9 +183,7 @@ class _MainShellState extends State<MainShell> {
         onDestinationSelected: (i) => setState(() => _pageIndex = i),
         destinations: _pages
             .map((p) => NavigationDestination(
-                  icon: Icon(p.icon),
-                  label: p.label,
-                ))
+                  icon: Icon(p.icon), label: p.label))
             .toList(),
       ),
     );

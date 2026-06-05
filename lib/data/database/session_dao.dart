@@ -1,3 +1,4 @@
+import 'package:sqflite/sqflite.dart';
 import '../database/app_database.dart';
 import '../models/session_model.dart';
 import '../models/session_summary.dart';
@@ -9,17 +10,11 @@ import '../models/mic_sample.dart';
 class SessionDao {
   // ── Session CRUD ─────────────────────────────────────────────────────────
 
+  /// Inserts a new session row and returns the model with its generated id.
   Future<SessionModel> insert(SessionModel session) async {
     final db = await AppDatabase.instance.db;
     final id = await db.insert('sessions', session.toMap());
-    return SessionModel(
-      id: id,
-      userId: session.userId,
-      deviceId: session.deviceId,
-      startedAt: session.startedAt,
-      endedAt: session.endedAt,
-      isActive: session.isActive,
-    );
+    return session.copyWith(id: id);
   }
 
   Future<List<SessionModel>> findByUser(int userId) async {
@@ -33,27 +28,56 @@ class SessionDao {
     return rows.map(SessionModel.fromMap).toList();
   }
 
-  /// Returns any session that is still marked active (crash recovery).
-  Future<SessionModel?> findActiveSession(int userId) async {
+  /// Returns the first session still marked active (no ended_at).
+  /// Used during crash recovery — does NOT require a userId.
+  Future<SessionModel?> findIncompleteSession() async {
     final db = await AppDatabase.instance.db;
     final rows = await db.query(
       'sessions',
-      where: 'user_id = ? AND is_active = 1 AND ended_at IS NULL',
-      whereArgs: [userId],
+      where: 'is_active = 1 AND ended_at IS NULL',
       limit: 1,
     );
     if (rows.isEmpty) return null;
     return SessionModel.fromMap(rows.first);
   }
 
-  Future<void> closeSession(int sessionId, String endedAt) async {
+  /// Marks a session as closed.
+  Future<void> closeSession(int sessionId, DateTime endedAt) async {
     final db = await AppDatabase.instance.db;
     await db.update(
       'sessions',
-      {'ended_at': endedAt, 'is_active': 0},
+      {'ended_at': endedAt.toIso8601String(), 'is_active': 0},
       where: 'id = ?',
       whereArgs: [sessionId],
     );
+  }
+
+  // ── Row counts (used by checkpoint) ─────────────────────────────────────
+
+  Future<int> countImu(int? sessionId) async {
+    if (sessionId == null) return 0;
+    final db = await AppDatabase.instance.db;
+    final result = await db.rawQuery(
+      'SELECT COUNT(*) as cnt FROM imu_data WHERE session_id = ?', [sessionId]);
+    return (result.first['cnt'] as int?) ?? 0;
+  }
+
+  Future<int> countLight(int? sessionId) async {
+    if (sessionId == null) return 0;
+    final db = await AppDatabase.instance.db;
+    final result = await db.rawQuery(
+      "SELECT COUNT(*) as cnt FROM sensor_snapshots "
+      "WHERE session_id = ? AND sensor_type = 'light'", [sessionId]);
+    return (result.first['cnt'] as int?) ?? 0;
+  }
+
+  Future<int> countMic(int? sessionId) async {
+    if (sessionId == null) return 0;
+    final db = await AppDatabase.instance.db;
+    final result = await db.rawQuery(
+      "SELECT COUNT(*) as cnt FROM sensor_snapshots "
+      "WHERE session_id = ? AND sensor_type = 'mic'", [sessionId]);
+    return (result.first['cnt'] as int?) ?? 0;
   }
 
   // ── Batch sensor writes ──────────────────────────────────────────────────

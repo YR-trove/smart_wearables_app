@@ -1,8 +1,5 @@
 import 'dart:async';
-import 'dart:typed_data';
 import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
-import 'package:smart_wearables_app/connection/stream.dart';
 import 'package:smart_wearables_app/data/sensor_buffer.dart';
 import 'package:smart_wearables_app/data/models/imu_sample.dart';
 import 'package:smart_wearables_app/data/models/light_sample.dart';
@@ -14,23 +11,21 @@ import 'package:syncfusion_flutter_charts/charts.dart';
 // ---------------------------------------------------------------------------
 class ChartData {
   ChartData(this.x, this.y);
-  final int x;
+  final int    x;
   final double y;
 }
 
 // ---------------------------------------------------------------------------
 // HomePage — Developer Mode live charts
-// Data flows from SensorBuffer streams, never from the DB.
+// Data flows exclusively from SensorBuffer streams.
 // ---------------------------------------------------------------------------
 class HomePage extends StatefulWidget {
   const HomePage({
     super.key,
     required this.title,
-    required this.stream,
     required this.buffer,
   });
-  final String title;
-  final MyStream stream;
+  final String       title;
   final SensorBuffer buffer;
 
   @override
@@ -38,17 +33,17 @@ class HomePage extends StatefulWidget {
 }
 
 class _HomePageState extends State<HomePage> {
-  // IMU subscriptions
   StreamSubscription<ImuSample>?   _imuSub;
   StreamSubscription<LightSample>? _lightSub;
   StreamSubscription<MicSample>?   _micSub;
 
-  // ── IMU (accel + gyro retained from original implementation) ──────────────
+  // ── IMU — separate series for accel (A) and gyro (G) ─────────────────────
   List<ChartData> xaData = [], yaData = [], zaData = [];
   List<ChartData> xgData = [], ygData = [], zgData = [];
   ChartSeriesController? _xaCtrl, _yaCtrl, _zaCtrl;
   ChartSeriesController? _xgCtrl, _ygCtrl, _zgCtrl;
-  int _imuCounter = 0;
+  int _accelCounter = 0;
+  int _gyroCounter  = 0;
 
   // ── Light ─────────────────────────────────────────────────────────────────
   List<ChartData> uvData = [], blIntData = [], blRatioData = [], sunData = [];
@@ -62,10 +57,6 @@ class _HomePageState extends State<HomePage> {
 
   final int maxPts = 200;
 
-  // IMU sensitivity constants (unchanged)
-  static const double aSensitivity = 2.0 / 32767.0;
-  static const double gSensitivity = 1.0 / 175.0;
-
   @override
   void initState() {
     super.initState();
@@ -74,24 +65,33 @@ class _HomePageState extends State<HomePage> {
     _micSub   = widget.buffer.micStream.listen(_onMic);
   }
 
-  // ── Stream handlers ────────────────────────────────────────────────────────
-  void _onImu(ImuSample s) {
-    _append(xaData, _imuCounter, s.stepCount.toDouble());
-    _append(yaData, _imuCounter, s.metric3);
-    _append(zaData, _imuCounter, 0);          // placeholder until firmware defines
-    _imuCounter++;
-    _updateCtrl(_xaCtrl, xaData);
-    _updateCtrl(_yaCtrl, yaData);
-    _updateCtrl(_zaCtrl, zaData);
+  // ── Stream handlers ───────────────────────────────────────────────────────
 
-    // Gyro channels stay wired to the raw BLE stream for backward compat.
+  void _onImu(ImuSample s) {
+    if (s.type == 'A') {
+      _append(xaData, _accelCounter, s.x);
+      _append(yaData, _accelCounter, s.y);
+      _append(zaData, _accelCounter, s.z);
+      _accelCounter++;
+      _updateCtrl(_xaCtrl, xaData);
+      _updateCtrl(_yaCtrl, yaData);
+      _updateCtrl(_zaCtrl, zaData);
+    } else {
+      _append(xgData, _gyroCounter, s.x);
+      _append(ygData, _gyroCounter, s.y);
+      _append(zgData, _gyroCounter, s.z);
+      _gyroCounter++;
+      _updateCtrl(_xgCtrl, xgData);
+      _updateCtrl(_ygCtrl, ygData);
+      _updateCtrl(_zgCtrl, zgData);
+    }
   }
 
   void _onLight(LightSample s) {
-    _append(uvData,       _lightCounter, s.uvRisk);
-    _append(blIntData,    _lightCounter, s.blueLightIntensity);
-    _append(blRatioData,  _lightCounter, s.blueLightRatio);
-    _append(sunData,      _lightCounter, s.sunLikeIndex);
+    _append(uvData,      _lightCounter, s.uvRisk);
+    _append(blIntData,   _lightCounter, s.blueLightIntensity);
+    _append(blRatioData, _lightCounter, s.blueLightRatio);
+    _append(sunData,     _lightCounter, s.sunLikeIndex);
     _lightCounter++;
     _updateCtrl(_uvCtrl,      uvData);
     _updateCtrl(_blIntCtrl,   blIntData);
@@ -127,7 +127,8 @@ class _HomePageState extends State<HomePage> {
     super.dispose();
   }
 
-  // ── Build ──────────────────────────────────────────────────────────────────
+  // ── Build ─────────────────────────────────────────────────────────────────
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -137,19 +138,25 @@ class _HomePageState extends State<HomePage> {
       ),
       body: ListView(
         children: [
-          _sectionHeader('IMU'),
-          _buildChart('Steps',    xaData, Colors.red,    (c) => _xaCtrl = c, min: 0,    max: 50000),
-          _buildChart('Metric 3', yaData, Colors.green,  (c) => _yaCtrl = c, min: -100, max: 100),
+          _sectionHeader('Accelerometer (g)'),
+          _buildChart('X',  xaData, Colors.red,    (c) => _xaCtrl = c, min: -3,   max: 3),
+          _buildChart('Y',  yaData, Colors.green,  (c) => _yaCtrl = c, min: -3,   max: 3),
+          _buildChart('Z',  zaData, Colors.blue,   (c) => _zaCtrl = c, min: -3,   max: 3),
+
+          _sectionHeader('Gyroscope (°/s)'),
+          _buildChart('X',  xgData, Colors.orange, (c) => _xgCtrl = c, min: -180, max: 180),
+          _buildChart('Y',  ygData, Colors.purple, (c) => _ygCtrl = c, min: -180, max: 180),
+          _buildChart('Z',  zgData, Colors.yellow, (c) => _zgCtrl = c, min: -180, max: 180),
 
           _sectionHeader('Light Sensor'),
-          _buildChart('UV Risk (0–1)',          uvData,      Colors.orange,      (c) => _uvCtrl = c,      min: 0, max: 1),
-          _buildChart('Blue-Light Intensity',  blIntData,   Colors.blue,        (c) => _blIntCtrl = c,   min: 0, max: 4096),
-          _buildChart('Blue-Light Ratio (0–1)',blRatioData, Colors.lightBlue,   (c) => _blRatioCtrl = c, min: 0, max: 1),
-          _buildChart('Sun-Like Index (0–1)',  sunData,     Colors.amber,       (c) => _sunCtrl = c,     min: 0, max: 1),
+          _buildChart('UV Risk (0–1)',           uvData,      Colors.orange,    (c) => _uvCtrl = c,      min: 0, max: 1),
+          _buildChart('Blue-Light Intensity',   blIntData,   Colors.blue,      (c) => _blIntCtrl = c,   min: 0, max: 4096),
+          _buildChart('Blue-Light Ratio (0–1)', blRatioData, Colors.lightBlue, (c) => _blRatioCtrl = c, min: 0, max: 1),
+          _buildChart('Sun-Like Index (0–1)',   sunData,     Colors.amber,     (c) => _sunCtrl = c,     min: 0, max: 1),
 
           _sectionHeader('Microphone'),
-          _buildChart('Noise Level (dB)',   noiseLvlData,  Colors.red,    (c) => _noiseLvlCtrl = c,  min: 30, max: 120),
-          _buildChart('Noise Time (s)',     noiseTimeData, Colors.purple, (c) => _noiseTimeCtrl = c, min: 0,  max: 28800),
+          _buildChart('Noise Level (dB)', noiseLvlData,  Colors.red,    (c) => _noiseLvlCtrl = c,  min: 30,  max: 120),
+          _buildChart('Noise Time (s)',   noiseTimeData, Colors.purple, (c) => _noiseTimeCtrl = c, min: 0,   max: 28800),
         ],
       ),
     );
@@ -177,7 +184,8 @@ class _HomePageState extends State<HomePage> {
         children: [
           Padding(
             padding: const EdgeInsets.only(left: 8),
-            child: Text(title, style: const TextStyle(fontWeight: FontWeight.w600)),
+            child: Text(title,
+              style: const TextStyle(fontWeight: FontWeight.w600)),
           ),
           Expanded(
             child: SfCartesianChart(

@@ -2,7 +2,9 @@ import '../database/app_database.dart';
 import '../models/user_profile.dart';
 
 /// Data-access object for the `users` table.
+/// Uses AppDatabase.instance directly — no constructor args needed.
 class UserDao {
+  /// Inserts a new user and returns the profile with its generated id.
   Future<UserProfile> insert(UserProfile profile) async {
     final db = await AppDatabase.instance.db;
     final id = await db.insert('users', profile.toMap());
@@ -35,7 +37,7 @@ class UserDao {
 
   Future<void> delete(int id) async {
     final db = await AppDatabase.instance.db;
-    // ON DELETE CASCADE will remove sessions and all child rows automatically.
+    // ON DELETE CASCADE removes sessions and all child rows automatically.
     await db.delete('users', where: 'id = ?', whereArgs: [id]);
   }
 }
