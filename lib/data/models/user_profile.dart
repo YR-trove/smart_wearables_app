@@ -1,52 +1,45 @@
-/// Persistent user profile stored in the `users` table.
 class UserProfile {
-  final int? id;          // null before first DB insert
-  final String name;
-  final int? ageYears;
+  final int?    id;
+  final String  name;
+  final int?    age;
   final double? weightKg;
   final double? heightCm;
-  final String createdAt; // ISO-8601
 
   const UserProfile({
     this.id,
     required this.name,
-    this.ageYears,
+    this.age,
     this.weightKg,
     this.heightCm,
-    required this.createdAt,
   });
+
+  UserProfile copyWith({
+    int?    id,
+    String? name,
+    int?    age,
+    double? weightKg,
+    double? heightCm,
+  }) => UserProfile(
+    id:       id       ?? this.id,
+    name:     name     ?? this.name,
+    age:      age      ?? this.age,
+    weightKg: weightKg ?? this.weightKg,
+    heightCm: heightCm ?? this.heightCm,
+  );
 
   Map<String, dynamic> toMap() => {
     if (id != null) 'id': id,
-    'name': name,
-    'age': ageYears,
+    'name':      name,
+    'age':       age,
     'weight_kg': weightKg,
     'height_cm': heightCm,
-    'created_at': createdAt,
   };
 
   factory UserProfile.fromMap(Map<String, dynamic> m) => UserProfile(
-    id: m['id'] as int?,
-    name: m['name'] as String,
-    ageYears: m['age'] as int?,
+    id:       m['id']        as int?,
+    name:     m['name']      as String,
+    age:      m['age']       as int?,
     weightKg: m['weight_kg'] as double?,
     heightCm: m['height_cm'] as double?,
-    createdAt: m['created_at'] as String,
   );
-
-  UserProfile copyWith({
-    int? id,
-    String? name,
-    int? ageYears,
-    double? weightKg,
-    double? heightCm,
-  }) =>
-      UserProfile(
-        id: id ?? this.id,
-        name: name ?? this.name,
-        ageYears: ageYears ?? this.ageYears,
-        weightKg: weightKg ?? this.weightKg,
-        heightCm: heightCm ?? this.heightCm,
-        createdAt: createdAt,
-      );
 }

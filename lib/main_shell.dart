@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:smart_wearables_app/connection/stream.dart';
@@ -9,13 +10,20 @@ import 'package:smart_wearables_app/data/session_store.dart';
 import 'package:smart_wearables_app/home_page.dart';
 import 'package:smart_wearables_app/pages/fitness_page.dart';
 import 'package:smart_wearables_app/pages/light_page.dart';
-import 'package:smart_wearables_app/pages/stress_page.dart';
 import 'package:smart_wearables_app/pages/settings_page.dart';
-import 'app_theme.dart';
+import 'package:smart_wearables_app/pages/stress_page.dart';
 
+/// Top-level shell shown while a BLE device is connected.
+/// Owns the [SensorBuffer] (dev-mode ring buffer) and routes every
+/// validated BLE packet to both the buffer (for live charts) and the
+/// [SessionStore] (for DB persistence).
 class MainShell extends StatefulWidget {
   final MyStream stream;
+
+  /// The BLE device ID returned by [ConnectionPage]. Used by [SessionStore]
+  /// to tag the recording session.
   final String deviceId;
+
   const MainShell({super.key, required this.stream, required this.deviceId});
 
   @override
@@ -23,194 +31,177 @@ class MainShell extends StatefulWidget {
 }
 
 class _MainShellState extends State<MainShell> {
-  int  _selectedIndex = 0;
-  bool _devMode       = false;
+  final SensorBuffer _buffer = SensorBuffer();
+  StreamSubscription<List<int>>? _sub;
+  int _pageIndex = 0;
 
-  late final SensorBuffer  _buffer;
-  late final SessionStore  _store;
+  // IMU sensitivity constants (LSM6DSO16IS)
+  static const double kAccelSens = 2.0 / 32767.0;  // g/LSB  (±2g range)
+  static const double kGyroSens  = 1.0 / 175.0;    // °/s/LSB (±250 dps range)
 
   @override
   void initState() {
     super.initState();
-    _buffer = SensorBuffer();
-    _store  = context.read<SessionStore>();
-    _store.startSession(widget.deviceId);
-    widget.stream.controller.stream.listen(_onPacket);
+    _startSession();
+    _sub = widget.stream.controller.stream.listen(_onPacket);
   }
 
-  void _onPacket(List<int> packet) {
-    if (packet.length < 2) return;
-    final type = packet[1];
+  // ── Session start/end ─────────────────────────────────────────
 
-    switch (type) {
-      // IMU — 'A' (0x41) accelerometer, 'G' (0x47) gyroscope
-      case 0x41:
-      case 0x47:
-        final s = ImuSample(
-          timestampMs: DateTime.now().millisecondsSinceEpoch,
-          stepCount: _extractInt16(packet, 2),
-          metric3: _extractInt16(packet, 4).toDouble(),
-        );
-        _store.onImuPacket(s);
-        if (_devMode) _buffer.ingestImu(s);
-        break;
-
-      // Light — 'L' (0x4C)
-      case 0x4C:
-        final s = LightSample(
-          timestampMs: DateTime.now().millisecondsSinceEpoch,
-          uvRisk:             _extractUint16(packet, 2) / 65535.0,
-          blueLightIntensity: _extractUint16(packet, 4).toDouble(),
-          blueLightRatio:     _extractUint16(packet, 6) / 65535.0,
-          sunLikeIndex:       _extractUint16(packet, 8) / 65535.0,
-          metric1:            _extractUint16(packet, 10).toDouble(),
-        );
-        _store.onLightPacket(s);
-        if (_devMode) _buffer.ingestLight(s);
-        break;
-
-      // Mic — 'M' (0x4D)
-      case 0x4D:
-        final s = MicSample(
-          timestampMs: DateTime.now().millisecondsSinceEpoch,
-          noiseLevel: _extractUint16(packet, 2) / 10.0,  // tenths of dB
-          noiseTime:  _extractUint16(packet, 4).toDouble(),
-          metric2:    _extractUint16(packet, 6).toDouble(),
-        );
-        _store.onMicPacket(s);
-        if (_devMode) _buffer.ingestMic(s);
-        break;
-    }
-  }
-
-  // ── Packet helpers ─────────────────────────────────────────────────────────
-  int _extractInt16(List<int> p, int offset) {
-    if (p.length < offset + 2) return 0;
-    final lo = p[offset];
-    final hi = p[offset + 1];
-    int v = (hi << 8) | lo;
-    if (v >= 0x8000) v -= 0x10000;
-    return v;
-  }
-
-  int _extractUint16(List<int> p, int offset) {
-    if (p.length < offset + 2) return 0;
-    return (p[offset + 1] << 8) | p[offset];
-  }
-
-  // ── Dev mode ───────────────────────────────────────────────────────────────
-  void _onDevModeChanged(bool val) {
-    setState(() {
-      _devMode = val;
-      if (!val && _selectedIndex == 4) _selectedIndex = 0;
+  void _startSession() {
+    // Use addPostFrameCallback so the Provider tree is ready before the
+    // async call. Errors are logged; the app continues even if DB fails.
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      try {
+        final store = context.read<SessionStore>();
+        await store.startSession(widget.deviceId);
+        debugPrint('MainShell: session started for device ${widget.deviceId}');
+      } catch (e) {
+        debugPrint('MainShell: startSession error — $e');
+      }
     });
-  }
-
-  void _onTabTapped(int index) {
-    if (index == 4 && !_devMode) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Enable Developer Mode in Settings to access this tab.'),
-          duration: Duration(seconds: 2),
-        ),
-      );
-      return;
-    }
-    setState(() => _selectedIndex = index);
   }
 
   @override
   void dispose() {
+    _sub?.cancel();
+    // End the session when the shell is popped (device disconnect / back nav).
+    final store = context.read<SessionStore>();
+    store.endSession().catchError(
+      (e) => debugPrint('MainShell: endSession error — $e'));
     _buffer.dispose();
     super.dispose();
   }
 
+  // ── Packet router ───────────────────────────────────────────────
+
+  void _onPacket(List<int> data) {
+    if (data.length < 20) return;
+    final type = String.fromCharCode(data[1]);
+    final store = context.read<SessionStore>();
+    final ts = DateTime.now();
+
+    switch (type) {
+      // ── IMU: Accelerometer ─────────────────────────────────────
+      case 'A':
+        final ax = _int16le(data, 2) * kAccelSens;
+        final ay = _int16le(data, 4) * kAccelSens;
+        final az = _int16le(data, 6) * kAccelSens;
+        final stepCount = _uint16le(data, 8);
+        _buffer.addAccel(ts, ax, ay, az);
+        store.onImuPacket(ImuSample(
+          sessionId: store.activeSession?.id ?? 0,
+          timestamp: ts,
+          type: 'A',
+          x: ax, y: ay, z: az,
+          stepCount: stepCount,
+        ));
+        break;
+
+      // ── IMU: Gyroscope ────────────────────────────────────────
+      case 'G':
+        final gx = _int16le(data, 2) * kGyroSens;
+        final gy = _int16le(data, 4) * kGyroSens;
+        final gz = _int16le(data, 6) * kGyroSens;
+        _buffer.addGyro(ts, gx, gy, gz);
+        store.onImuPacket(ImuSample(
+          sessionId: store.activeSession?.id ?? 0,
+          timestamp: ts,
+          type: 'G',
+          x: gx, y: gy, z: gz,
+        ));
+        break;
+
+      // ── Light sensor ───────────────────────────────────────────
+      // TODO: confirm byte offsets once firmware defines 'L' packet layout.
+      case 'L':
+        final uvRisk          = data[2].toDouble();
+        final blueLightInt    = _uint16le(data, 3).toDouble();
+        final blueLightRatio  = data[5] / 100.0;   // byte → 0–255 / 100 ratio
+        final sunLikeIndex    = data[6].toDouble();
+        final metric1         = _int16le(data, 7).toDouble();
+        _buffer.addLight(ts, uvRisk, blueLightInt, blueLightRatio, sunLikeIndex);
+        store.onLightPacket(LightSample(
+          sessionId:        store.activeSession?.id ?? 0,
+          timestamp:        ts,
+          uvRisk:           uvRisk,
+          blueLightIntensity: blueLightInt,
+          blueLightRatio:   blueLightRatio,
+          sunLikeIndex:     sunLikeIndex,
+          metric1:          metric1,
+        ));
+        break;
+
+      // ── Microphone ───────────────────────────────────────────────
+      // TODO: confirm byte offsets once firmware defines 'M' packet layout.
+      case 'M':
+        final noiseLevel = _uint16le(data, 2).toDouble();
+        final noiseTime  = _uint16le(data, 4).toDouble();
+        final metric2    = _int16le(data, 6).toDouble();
+        _buffer.addMic(ts, noiseLevel, noiseTime);
+        store.onMicPacket(MicSample(
+          sessionId:  store.activeSession?.id ?? 0,
+          timestamp:  ts,
+          noiseLevel: noiseLevel,
+          noiseTime:  noiseTime,
+          metric2:    metric2,
+        ));
+        break;
+
+      default:
+        debugPrint('MainShell: unknown packet type “$type”');
+    }
+  }
+
+  // ── Little-endian helpers ───────────────────────────────────────
+
+  static int _int16le(List<int> d, int i) {
+    int v = d[i] | (d[i + 1] << 8);
+    if (v >= 0x8000) v -= 0x10000;
+    return v;
+  }
+
+  static int _uint16le(List<int> d, int i) => d[i] | (d[i + 1] << 8);
+
+  // ── UI ────────────────────────────────────────────────────────────────
+
+  static const _pages = [
+    _PageMeta(icon: Icons.show_chart,    label: 'Live'),
+    _PageMeta(icon: Icons.directions_run,label: 'Fitness'),
+    _PageMeta(icon: Icons.wb_sunny,      label: 'Light'),
+    _PageMeta(icon: Icons.self_improvement, label: 'Stress'),
+    _PageMeta(icon: Icons.settings,      label: 'Settings'),
+  ];
+
   @override
   Widget build(BuildContext context) {
-    return MultiProvider(
-      providers: [
-        Provider.value(value: _buffer),
-      ],
-      child: Scaffold(
-        backgroundColor: AppColors.background,
-        body: IndexedStack(
-          index: _selectedIndex,
-          children: [
-            const FitnessPage(),
-            const LightPage(),
-            const StressPage(),
-            SettingsPage(
-              devMode: _devMode,
-              onDevModeChanged: _onDevModeChanged,
-            ),
-            HomePage(
-              title: 'Developer',
-              stream: widget.stream,
-              buffer: _buffer,
-            ),
-          ],
-        ),
-        bottomNavigationBar: _buildBottomNav(),
+    return Scaffold(
+      body: IndexedStack(
+        index: _pageIndex,
+        children: [
+          HomePage(title: 'Live Sensors', buffer: _buffer),
+          FitnessPage(buffer: _buffer),
+          LightPage(buffer: _buffer),
+          StressPage(buffer: _buffer),
+          const SettingsPage(),
+        ],
+      ),
+      bottomNavigationBar: NavigationBar(
+        selectedIndex: _pageIndex,
+        onDestinationSelected: (i) => setState(() => _pageIndex = i),
+        destinations: _pages
+            .map((p) => NavigationDestination(
+                  icon: Icon(p.icon),
+                  label: p.label,
+                ))
+            .toList(),
       ),
     );
   }
+}
 
-  Widget _buildBottomNav() {
-    return Container(
-      decoration: const BoxDecoration(
-        color: Colors.white,
-        border: Border(top: BorderSide(color: AppColors.divider)),
-      ),
-      child: SafeArea(
-        top: false,
-        child: SizedBox(
-          height: 60,
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceAround,
-            children: [
-              _navItem(0, Icons.home_outlined,      Icons.home_rounded,     'Home'),
-              _navItem(1, Icons.light_mode_outlined, Icons.light_mode_rounded,'Light'),
-              _navItem(2, Icons.graphic_eq,          Icons.graphic_eq,       'Stress'),
-              _navItem(3, Icons.settings_outlined,   Icons.settings_rounded,  'Settings'),
-              _navItem(4, Icons.terminal_outlined,   Icons.terminal,          'Developer',
-                  disabled: !_devMode),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _navItem(
-    int index,
-    IconData outlinedIcon,
-    IconData filledIcon,
-    String label, {
-    bool disabled = false,
-  }) {
-    final isActive = _selectedIndex == index;
-    final color = disabled
-        ? AppColors.inactive.withOpacity(0.4)
-        : isActive ? AppColors.accent : AppColors.inactive;
-
-    return Expanded(
-      child: GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onTap: () => _onTabTapped(index),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(isActive ? filledIcon : outlinedIcon, color: color, size: 24),
-            const SizedBox(height: 2),
-            Text(label,
-              style: TextStyle(
-                fontSize: 10,
-                fontWeight: FontWeight.w500,
-                color: color,
-              )),
-          ],
-        ),
-      ),
-    );
-  }
+class _PageMeta {
+  final IconData icon;
+  final String   label;
+  const _PageMeta({required this.icon, required this.label});
 }
