@@ -4,7 +4,7 @@ import 'models/light_sample.dart';
 import 'models/mic_sample.dart';
 
 /// In-memory ring buffer used exclusively for live chart display.
-/// No data is ever written to disk from this class.
+/// sessionId is always 0 here — these samples are never persisted from this class.
 const int kBufferSize = 200;
 
 class SensorBuffer {
@@ -24,41 +24,60 @@ class SensorBuffer {
   List<LightSample> get lightSnapshot => _light.toList();
   List<MicSample>   get micSnapshot   => _mic.toList();
 
-  // Named consistently with main_shell.dart callers:
+  // ── Accel / Gyro ──────────────────────────────────────────────────────────
+
   void addAccel(DateTime ts, double x, double y, double z) {
     final s = ImuSample(
       sessionId: 0, timestamp: ts, type: 'A', x: x, y: y, z: z);
-    _imu.add(s); _imuCtrl.add(s);
+    _imu.add(s);
+    _imuCtrl.add(s);
   }
 
   void addGyro(DateTime ts, double x, double y, double z) {
     final s = ImuSample(
       sessionId: 0, timestamp: ts, type: 'G', x: x, y: y, z: z);
-    _imu.add(s); _imuCtrl.add(s);
+    _imu.add(s);
+    _imuCtrl.add(s);
   }
 
+  // ── Light ─────────────────────────────────────────────────────────────────
+
   void addLight(
-      DateTime ts, double uvRisk, double blueLightIntensity,
-      double blueLightRatio, double sunLikeIndex) {
+    DateTime ts,
+    double uvRisk,
+    double blueLightIntensity,
+    double blueLightRatio,
+    double sunLikeIndex,
+  ) {
     final s = LightSample(
-      sessionId: 0, timestamp: ts,
-      uvRisk: uvRisk,
+      sessionId:          0,
+      timestamp:          ts,
+      uvRisk:             uvRisk,
       blueLightIntensity: blueLightIntensity,
-      blueLightRatio: blueLightRatio,
-      sunLikeIndex: sunLikeIndex,
-      metric1: 0,
+      blueLightRatio:     blueLightRatio,
+      sunLikeIndex:       sunLikeIndex,
+      metric1:            0,
     );
-    _light.add(s); _lightCtrl.add(s);
+    _light.add(s);
+    _lightCtrl.add(s);
   }
+
+  // ── Mic ───────────────────────────────────────────────────────────────────
 
   void addMic(DateTime ts, double noiseLevel, double noiseTime) {
     final s = MicSample(
-      sessionId: 0, timestamp: ts,
-      noiseLevel: noiseLevel, noiseTime: noiseTime, metric2: 0);
-    _mic.add(s); _micCtrl.add(s);
+      sessionId:  0,
+      timestamp:  ts,
+      noiseLevel: noiseLevel,
+      noiseTime:  noiseTime,
+      metric2:    0,
+    );
+    _mic.add(s);
+    _micCtrl.add(s);
   }
 
-  // Legacy ingest aliases (used by HomePage directly if needed)
+  // ── Legacy ingest aliases (used by direct ImuSample/LightSample injection) ─
+
   void ingestImu(ImuSample s)     { _imu.add(s);   _imuCtrl.add(s); }
   void ingestLight(LightSample s) { _light.add(s); _lightCtrl.add(s); }
   void ingestMic(MicSample s)     { _mic.add(s);   _micCtrl.add(s); }
