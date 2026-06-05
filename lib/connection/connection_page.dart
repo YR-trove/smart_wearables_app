@@ -139,18 +139,16 @@ class _ConnectionPageState extends State<ConnectionPage> {
       switch (event.connectionState) {
         case DeviceConnectionState.connecting:
           connectingProcedure(id);
-          break;
         case DeviceConnectionState.connected:
           connectionProcedure(id, event);
-          break;
         case DeviceConnectionState.disconnected:
           disconnectionProcedure(id);
-          break;
         default:
           break;
       }
       refreshScreen();
     }, onError: (Object error) {
+      if (!mounted) return;
       connecting = false;
       connected  = false;
       ScaffoldMessenger.of(context).showSnackBar(

@@ -31,7 +31,8 @@ class MainShell extends StatefulWidget {
 class _MainShellState extends State<MainShell> {
   final SensorBuffer _buffer = SensorBuffer();
   StreamSubscription<List<int>>? _sub;
-  int _pageIndex = 0;
+  int  _pageIndex = 0;
+  bool _devMode   = false;
 
   // IMU sensitivity constants (LSM6DSO16IS)
   static const double kAccelSens = 2.0 / 32767.0;  // g/LSB  (±2g range)
@@ -89,7 +90,6 @@ class _MainShellState extends State<MainShell> {
           x: ax, y: ay, z: az,
           stepCount: stepCount,
         ));
-        break;
 
       // ── Gyroscope ────────────────────────────────────────────────────────
       case 'G':
@@ -102,7 +102,6 @@ class _MainShellState extends State<MainShell> {
           timestamp: ts, type: 'G',
           x: gx, y: gy, z: gz,
         ));
-        break;
 
       // ── Light sensor ─────────────────────────────────────────────────────
       // TODO: confirm byte offsets once firmware documents the 'L' packet.
@@ -122,7 +121,6 @@ class _MainShellState extends State<MainShell> {
           sunLikeIndex: sunLikeIndex,
           metric1: metric1,
         ));
-        break;
 
       // ── Microphone ───────────────────────────────────────────────────────
       // TODO: confirm byte offsets once firmware documents the 'M' packet.
@@ -138,7 +136,6 @@ class _MainShellState extends State<MainShell> {
           noiseTime:  noiseTime,
           metric2:    metric2,
         ));
-        break;
 
       default:
         debugPrint('MainShell: unknown packet type "$type"');
@@ -172,10 +169,13 @@ class _MainShellState extends State<MainShell> {
         index: _pageIndex,
         children: [
           HomePage(title: 'Live Sensors', buffer: _buffer),
-          FitnessPage(buffer: _buffer),
-          LightPage(buffer: _buffer),
-          StressPage(buffer: _buffer),
-          const SettingsPage(),
+          const FitnessPage(),
+          const LightPage(),
+          const StressPage(),
+          SettingsPage(
+            devMode: _devMode,
+            onDevModeChanged: (v) => setState(() => _devMode = v),
+          ),
         ],
       ),
       bottomNavigationBar: NavigationBar(
