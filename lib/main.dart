@@ -4,10 +4,12 @@ import 'package:smart_wearables_app/connection/connection_page.dart';
 import 'package:smart_wearables_app/data/session_store.dart';
 
 void main() async {
+  // Required before any async call or plugin use in main().
   WidgetsFlutterBinding.ensureInitialized();
 
+  // Open the SQLite DB and recover any in-progress session.
   final sessionStore = SessionStore();
-  await sessionStore.init();   // opens DB, recovers any crashed session
+  await sessionStore.init();
 
   runApp(
     ChangeNotifierProvider.value(
@@ -36,6 +38,10 @@ class MyApp extends StatelessWidget {
           surfaceTintColor: Colors.transparent,
           elevation: 0,
           scrolledUnderElevation: 0,
+        ),
+        inputDecorationTheme: const InputDecorationTheme(
+          filled: true,
+          fillColor: Colors.white,
         ),
       ),
       home: const ConnectionPage(title: 'Connect your device!'),
