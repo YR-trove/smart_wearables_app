@@ -5,13 +5,10 @@ enum MsgType {
   calibration(0xb2),
   frameNotActive(0xb3),
   frameMoving(0xb4),
-  /* ----------------------------------- imu ---------------------------------- */
-  imuAccel(0x41), // ASCII 'A'
-  imuGyro(0x47),  // ASCII 'G'
-  /* ---------------------------------- light --------------------------------- */
-  light(0x4C),    // ASCII 'L'
-  /* ----------------------------------- mic ---------------------------------- */
-  mic(0x4D),      // ASCII 'M'
+  /* ----------------------- unified telemetry frame ------------------------- */
+  /// Single 20-byte state packet transmitted at 1 Hz by the MCU.
+  /// Carries fused IMU kinematics + AS7341 spectral light metrics.
+  unifiedState(0x55),
   /* ----------------------------------- har ---------------------------------- */
   har(0xe0),
   /* ----------------------------------- end ---------------------------------- */
