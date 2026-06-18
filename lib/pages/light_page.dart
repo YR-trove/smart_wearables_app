@@ -1,406 +1,352 @@
 import 'package:flutter/material.dart';
-import '../app_theme.dart';
+import 'package:provider/provider.dart';
+import 'package:smart_wearables_app/app_theme.dart';
+import 'package:smart_wearables_app/data/session_store.dart';
 
+/// Light / Photobiology dashboard — driven entirely by [SessionStore]
+/// accumulators updated on every 1 Hz AS7341 packet.
+///
+/// Displays:
+///   • UV index card (live Q15-scaled value)
+///   • Sunlight exposure arc gauge (accumulated seconds)
+///   • Skin burn risk badge (Low / Moderate / High)
+///   • Nighttime blue light exposure bar
+///   • Circadian score ring gauge (starts at 100, deducted over time)
 class LightPage extends StatelessWidget {
   const LightPage({super.key});
 
-  static const _hourlyData = [20, 45, 70, 85, 90, 75, 60, 50, 55, 40, 30, 15, 10];
-  static const _hours = ['8', '9', '10', '11', '12', '1', '2', '3', '4', '5', '6', '7', '8'];
+  // ─── Colour helpers ──────────────────────────────────────────────────────────
+
+  Color _uvColor(double idx) {
+    if (idx >= 8) return AppColors.danger;
+    if (idx >= 6) return AppColors.warning;
+    if (idx >= 3) return const Color(0xFFF59E0B);
+    return AppColors.success;
+  }
+
+  String _uvLabel(double idx) {
+    if (idx >= 8) return 'Very High';
+    if (idx >= 6) return 'High';
+    if (idx >= 3) return 'Moderate';
+    return 'Low';
+  }
+
+  Color _burnRiskColor(String risk) => switch (risk) {
+    'High'     => AppColors.danger,
+    'Moderate' => AppColors.warning,
+    _          => AppColors.success,
+  };
+
+  Color _blueRatioColor(double ratio) {
+    if (ratio > 0.5) return AppColors.danger;
+    if (ratio > 0.35) return AppColors.warning;
+    return AppColors.success;
+  }
+
+  // ─── Build ───────────────────────────────────────────────────────────────────
 
   @override
   Widget build(BuildContext context) {
+    final store = context.watch<SessionStore>();
+    final bool  live = store.activeSession != null;
+
     return Scaffold(
       backgroundColor: AppColors.background,
-      appBar: _buildAppBar(),
-      body: ListView(
-        padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
+      appBar: AppBar(
+        backgroundColor: AppColors.background,
+        elevation: 0,
+        title: const Text('Light & Environment',
+            style: TextStyle(fontWeight: FontWeight.w600, fontSize: 20)),
+        actions: [
+          Padding(
+            padding: const EdgeInsets.only(right: 16),
+            child: Chip(
+              label: Text(live ? 'Live' : 'No Session',
+                  style: const TextStyle(fontSize: 12, color: Colors.white)),
+              backgroundColor: live ? AppColors.success : AppColors.inactive,
+              padding: EdgeInsets.zero,
+            ),
+          )
+        ],
+      ),
+      body: live
+          ? _buildLiveDashboard(store)
+          : _buildNoSession(context),
+    );
+  }
+
+  // ─── No-session empty state ──────────────────────────────────────────────────
+
+  Widget _buildNoSession(BuildContext context) => Center(
+    child: Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(Icons.wb_sunny_outlined, size: 56, color: AppColors.inactive),
+        const SizedBox(height: 16),
+        Text('No active session',
+            style: TextStyle(fontSize: 16, color: AppColors.muted)),
+        const SizedBox(height: 8),
+        Text('Connect a device to monitor light exposure.',
+            style: TextStyle(fontSize: 14, color: AppColors.inactive)),
+      ],
+    ),
+  );
+
+  // ─── Live dashboard ──────────────────────────────────────────────────────────
+
+  Widget _buildLiveDashboard(SessionStore store) {
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _blueLightSection(),
-          const SizedBox(height: 20),
-          _sunlightSection(),
-          const SizedBox(height: 20),
-          _circadianSection(),
-          const SizedBox(height: 20),
-          _timelineSection(),
-          const SizedBox(height: 20),
-          _accumulatedSection(),
-          const SizedBox(height: 8),
+          _buildUvCard(store),
+          const SizedBox(height: 12),
+          _buildSunlightCard(store),
+          const SizedBox(height: 12),
+          _buildBlueLightCard(store),
+          const SizedBox(height: 12),
+          _buildCircadianCard(store),
         ],
       ),
     );
   }
 
-  PreferredSizeWidget _buildAppBar() {
-    return AppBar(
-      backgroundColor: AppColors.background,
-      elevation: 0,
-      scrolledUnderElevation: 0,
-      centerTitle: true,
-      title: const Text(
-        'Light Exposure',
-        style: TextStyle(
-          fontSize: 17,
-          fontWeight: FontWeight.w600,
-          color: AppColors.primary,
-        ),
-      ),
-    );
-  }
+  // ─── UV index card ────────────────────────────────────────────────────────────
 
-  Widget _blueLightSection() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const SectionLabel('Blue Light'),
-        const SizedBox(height: 6),
-        AppCard(
-          child: Column(
-            children: [
-              Padding(
-                padding: const EdgeInsets.all(16),
-                child: Row(
+  Widget _buildUvCard(SessionStore store) {
+    final uv    = store.currentUvIndex;
+    final color = _uvColor(uv);
+    return AppCard(
+      leftBorderColor: color,
+      child: Row(
+        children: [
+          Container(
+            width: 52,
+            height: 52,
+            decoration: BoxDecoration(
+              color: color.withOpacity(0.12),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Icon(Icons.wb_sunny, color: color, size: 28),
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('UV Index',
+                    style: TextStyle(fontSize: 12, color: AppColors.muted)),
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.end,
                   children: [
-                    RingGauge(value: 0.58, size: 68, strokeWidth: 7),
-                    const SizedBox(width: 16),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: const [
-                          Text(
-                            '2h 34m',
-                            style: TextStyle(
-                              fontSize: 28,
-                              fontWeight: FontWeight.bold,
-                              color: AppColors.primary,
-                            ),
-                          ),
-                          Text(
-                            "Today's exposure",
-                            style: TextStyle(fontSize: 13, color: AppColors.muted),
-                          ),
-                        ],
-                      ),
-                    ),
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFFEF3C7),
-                        borderRadius: BorderRadius.circular(99),
-                      ),
-                      child: const Text(
-                        'Moderate',
+                    Text(uv.toStringAsFixed(1),
                         style: TextStyle(
-                          fontSize: 11,
-                          fontWeight: FontWeight.w600,
-                          color: Color(0xFFB45309),
-                        ),
-                      ),
+                            fontSize: 32,
+                            fontWeight: FontWeight.w700,
+                            color: color)),
+                    const SizedBox(width: 8),
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 4),
+                      child: Text(_uvLabel(uv),
+                          style: TextStyle(fontSize: 14, color: color)),
                     ),
                   ],
-                ),
-              ),
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-                child: Column(
-                  children: [
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: const [
-                        Text('Blue fraction', style: TextStyle(fontSize: 12, color: AppColors.muted)),
-                        Text('42%', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w500, color: AppColors.primary)),
-                      ],
-                    ),
-                    const SizedBox(height: 6),
-                    const AppProgressBar(value: 0.42),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _sunlightSection() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const SectionLabel('Sunlight'),
-        const SizedBox(height: 6),
-        AppCard(
-          child: Column(
-            children: [
-              Padding(
-                padding: const EdgeInsets.all(16),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: const [
-                          Text(
-                            'Sun Exposure',
-                            style: TextStyle(
-                              fontSize: 15,
-                              fontWeight: FontWeight.w500,
-                              color: AppColors.primary,
-                            ),
-                          ),
-                          SizedBox(height: 4),
-                          Text(
-                            '1h 12m',
-                            style: TextStyle(
-                              fontSize: 24,
-                              fontWeight: FontWeight.bold,
-                              color: AppColors.primary,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    Column(
-                      children: [
-                        RingGauge(
-                          value: 0.30,
-                          size: 56,
-                          strokeWidth: 6,
-                          color: AppColors.warning,
-                        ),
-                        const SizedBox(height: 4),
-                        const Text(
-                          'UV Index 3',
-                          style: TextStyle(fontSize: 10, color: AppColors.muted, fontWeight: FontWeight.w500),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-              const Divider(height: 1, thickness: 1, color: AppColors.divider),
-              Padding(
-                padding: const EdgeInsets.all(16),
-                child: Row(
-                  children: [
-                    Icon(Icons.check_circle_rounded, color: AppColors.success, size: 20),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: const [
-                          Text(
-                            'Skin Burn Risk: Low',
-                            style: TextStyle(
-                              fontSize: 14,
-                              fontWeight: FontWeight.w500,
-                              color: AppColors.primary,
-                            ),
-                          ),
-                          SizedBox(height: 2),
-                          Text(
-                            '45 min protection remaining',
-                            style: TextStyle(fontSize: 12, color: AppColors.muted),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _circadianSection() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const SectionLabel('Circadian Rhythm'),
-        const SizedBox(height: 6),
-        AppCard(
-          leftBorderColor: AppColors.warning,
-          padding: const EdgeInsets.all(16),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Icon(Icons.warning_amber_rounded, color: AppColors.warning, size: 20),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: const [
-                    Text(
-                      'Disruption Risk: Elevated',
-                      style: TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w600,
-                        color: AppColors.primary,
-                      ),
-                    ),
-                    SizedBox(height: 4),
-                    Text(
-                      'Your circadian dose is above the recommended threshold for this time of day.',
-                      style: TextStyle(fontSize: 12, color: AppColors.muted),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ),
-        const SizedBox(height: 8),
-        AppCard(
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: const [
-                Text(
-                  'Recommendation',
-                  style: TextStyle(
-                    fontSize: 15,
-                    fontWeight: FontWeight.w500,
-                    color: AppColors.primary,
-                  ),
-                ),
-                Text(
-                  'Reduce blue after 9 PM',
-                  style: TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600,
-                    color: AppColors.accent,
-                  ),
                 ),
               ],
             ),
           ),
-        ),
-      ],
+          _burnRiskBadge(store.skinBurnRisk),
+        ],
+      ),
     );
   }
 
-  Widget _timelineSection() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const SectionLabel("Today's Timeline"),
-        const SizedBox(height: 6),
-        AppCard(
-          padding: const EdgeInsets.all(16),
-          child: Column(
+  Widget _burnRiskBadge(String risk) {
+    final color = _burnRiskColor(risk);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.12),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: color.withOpacity(0.4)),
+      ),
+      child: Text('Burn: $risk',
+          style: TextStyle(
+              fontSize: 11, fontWeight: FontWeight.w600, color: color)),
+    );
+  }
+
+  // ─── Sunlight exposure card ───────────────────────────────────────────────────
+
+  Widget _buildSunlightCard(SessionStore store) {
+    final secs  = store.sunlightSeconds;
+    final mins  = secs ~/ 60;
+    // Recommended 20-30 min of sunlight; cap ring at 60 min.
+    final prog  = (secs / 1800.0).clamp(0.0, 1.0);
+    return AppCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SectionLabel(text: 'SUNLIGHT EXPOSURE'),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              RingGauge(
+                value:       prog,
+                color:       AppColors.warning,
+                size:        80,
+                strokeWidth: 9,
+              ),
+              const SizedBox(width: 20),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('$mins min',
+                        style: const TextStyle(
+                            fontSize: 26, fontWeight: FontWeight.w700)),
+                    Text('of broad-spectrum light today',
+                        style: TextStyle(
+                            fontSize: 12, color: AppColors.muted)),
+                    const SizedBox(height: 6),
+                    AppProgressBar(
+                        value: prog, color: AppColors.warning),
+                    const SizedBox(height: 4),
+                    Text('Goal: 30 min',
+                        style: TextStyle(
+                            fontSize: 11, color: AppColors.inactive)),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ─── Blue light / night exposure card ────────────────────────────────────────
+
+  Widget _buildBlueLightCard(SessionStore store) {
+    final nightSecs  = store.nightBlueLightSeconds;
+    final nightMins  = nightSecs ~/ 60;
+    final ratio      = store.currentBlueRatio;
+    final riskProg   = (nightSecs / 3600.0).clamp(0.0, 1.0);
+    final riskLabel  = nightSecs < 1800 ? 'Low'
+                     : nightSecs < 3600 ? 'Moderate'
+                     : 'High';
+    final riskColor  = _burnRiskColor(riskLabel);
+
+    return AppCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SectionLabel(text: 'BLUE LIGHT (NIGHT)'),
+          const SizedBox(height: 12),
+          Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text(
-                'Blue light intensity by hour',
-                style: TextStyle(fontSize: 12, color: AppColors.muted),
-              ),
-              const SizedBox(height: 10),
-              Container(
-                height: 80,
-                decoration: BoxDecoration(
-                  color: AppColors.background,
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                padding: const EdgeInsets.fromLTRB(8, 8, 8, 0),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.end,
-                  children: List.generate(_hourlyData.length, (i) {
-                    return Expanded(
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 1.5),
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.end,
-                          children: [
-                            Expanded(
-                              child: Align(
-                                alignment: Alignment.bottomCenter,
-                                child: FractionallySizedBox(
-                                  heightFactor: _hourlyData[i] / 100,
-                                  child: Container(
-                                    decoration: const BoxDecoration(
-                                      color: Color(0xFF60A5FA),
-                                      borderRadius: BorderRadius.vertical(top: Radius.circular(3)),
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            ),
-                            const SizedBox(height: 3),
-                            Text(
-                              _hours[i],
-                              style: const TextStyle(fontSize: 7, color: AppColors.inactive),
-                            ),
-                          ],
-                        ),
-                      ),
-                    );
-                  }),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('$nightMins min exposure',
+                        style: const TextStyle(
+                            fontSize: 20, fontWeight: FontWeight.w700)),
+                    Text('after 19:00 · ratio > 0.35 threshold',
+                        style: TextStyle(
+                            fontSize: 11, color: AppColors.muted)),
+                    const SizedBox(height: 10),
+                    AppProgressBar(value: riskProg, color: riskColor),
+                    const SizedBox(height: 4),
+                    Text('Risk level: $riskLabel',
+                        style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                            color: riskColor)),
+                  ],
                 ),
               ),
-              const SizedBox(height: 4),
-              const Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              const SizedBox(width: 16),
+              Column(
                 children: [
-                  Text('8 AM', style: TextStyle(fontSize: 10, color: AppColors.inactive)),
-                  Text('8 PM', style: TextStyle(fontSize: 10, color: AppColors.inactive)),
+                  Text('Live ratio',
+                      style: TextStyle(
+                          fontSize: 11, color: AppColors.muted)),
+                  const SizedBox(height: 6),
+                  RingGauge(
+                    value:       ratio.clamp(0.0, 1.0),
+                    color:       _blueRatioColor(ratio),
+                    size:        64,
+                    strokeWidth: 7,
+                  ),
+                  const SizedBox(height: 4),
+                  Text('${(ratio * 100).toStringAsFixed(0)}%',
+                      style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          color: _blueRatioColor(ratio))),
                 ],
               ),
             ],
           ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 
-  Widget _accumulatedSection() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const SectionLabel('Accumulated Dose'),
-        const SizedBox(height: 6),
-        AppCard(
-          child: Column(
+  // ─── Circadian score card ─────────────────────────────────────────────────────
+
+  Widget _buildCircadianCard(SessionStore store) {
+    final score = store.circadianScore;
+    final prog  = (score / 100.0).clamp(0.0, 1.0);
+    final color = score >= 80 ? AppColors.success
+                : score >= 50 ? AppColors.warning
+                : AppColors.danger;
+    return AppCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SectionLabel(text: 'CIRCADIAN RHYTHM SCORE'),
+          const SizedBox(height: 12),
+          Row(
             children: [
-              Padding(
-                padding: const EdgeInsets.all(16),
+              RingGauge(
+                  value: prog, color: color, size: 90, strokeWidth: 10),
+              const SizedBox(width: 20),
+              Expanded(
                 child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: const [
-                        Text('Blue Exposure', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w500, color: AppColors.primary)),
-                        Text('48,320 units', style: TextStyle(fontSize: 13, color: AppColors.muted)),
-                      ],
+                    Text('$score / 100',
+                        style: TextStyle(
+                            fontSize: 28,
+                            fontWeight: FontWeight.w700,
+                            color: color)),
+                    const SizedBox(height: 6),
+                    Text(
+                      score >= 80
+                          ? 'Great — minimal circadian disruption.'
+                          : score >= 50
+                              ? 'Moderate — reduce screen time after 19:00.'
+                              : 'High disruption — consider blue-light glasses.',
+                      style: TextStyle(
+                          fontSize: 12, color: AppColors.muted),
                     ),
                     const SizedBox(height: 8),
-                    const AppProgressBar(value: 0.64),
-                  ],
-                ),
-              ),
-              const Divider(height: 1, thickness: 1, color: AppColors.divider),
-              Padding(
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  children: [
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: const [
-                        Text('Circadian Dose', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w500, color: AppColors.primary)),
-                        Text('21,044 units', style: TextStyle(fontSize: 13, color: AppColors.muted)),
-                      ],
+                    Text(
+                      'Night blue-light: ${store.nightBlueLightSeconds ~/ 60} min',
+                      style: TextStyle(
+                          fontSize: 11, color: AppColors.inactive),
                     ),
-                    const SizedBox(height: 8),
-                    const AppProgressBar(value: 0.42, color: AppColors.warning),
                   ],
                 ),
               ),
             ],
           ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 }

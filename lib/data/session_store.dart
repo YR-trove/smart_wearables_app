@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:typed_data';
 import 'package:flutter/foundation.dart';
 import 'package:smart_wearables_app/data/database/session_dao.dart';
@@ -6,13 +7,11 @@ import 'package:smart_wearables_app/data/models/session_model.dart';
 import 'package:smart_wearables_app/data/models/unified_telemetry.dart';
 import 'package:smart_wearables_app/data/models/user_profile.dart';
 
-/// Central state manager for user, session, and live telemetry.
+/// Central state manager for user, session, live telemetry, and derived metrics.
 ///
-/// The MCU transmits a 1 Hz unified state packet (0x55) containing fused
-/// IMU kinematics and AS7341 spectral light data. On every packet:
-///   1. Decode via [onUnifiedPacket].
-///   2. Write to DB immediately (single INSERT, no batching needed).
-///   3. Update [latestTelemetry] and notify listeners for UI refresh.
+/// All biomechanical (fitness) and photobiological (light) metrics are
+/// accumulated here on every 1 Hz packet so the UI pages remain stateless
+/// read-only consumers via [context.watch<SessionStore>()].
 class SessionStore extends ChangeNotifier {
   final SessionDao _sessionDao;
   final UserDao    _userDao;
@@ -23,22 +22,57 @@ class SessionStore extends ChangeNotifier {
   })  : _sessionDao = sessionDao ?? SessionDao(),
         _userDao    = userDao    ?? UserDao();
 
-  // ---------------------------------------------------------------------------
-  // State
-  // ---------------------------------------------------------------------------
+  // ─── Core state ─────────────────────────────────────────────────────────────
 
   UserProfile?      _currentUser;
   SessionModel?     _activeSession;
   UnifiedTelemetry? _latestTelemetry;
+  DateTime?         _sessionStartTime;
 
-  UserProfile?      get currentUser      => _currentUser;
-  SessionModel?     get activeSession    => _activeSession;
-  /// The most recently received + persisted telemetry snapshot.
-  UnifiedTelemetry? get latestTelemetry  => _latestTelemetry;
+  UserProfile?      get currentUser     => _currentUser;
+  SessionModel?     get activeSession   => _activeSession;
+  UnifiedTelemetry? get latestTelemetry => _latestTelemetry;
+  DateTime?         get sessionStartTime => _sessionStartTime;
 
-  // ---------------------------------------------------------------------------
-  // Initialisation — crash recovery
-  // ---------------------------------------------------------------------------
+  // ─── Fitness accumulators ────────────────────────────────────────────────────
+
+  int    _currentSteps    = 0;
+  int    _currentCadence  = 0;
+  int    _activityState   = 0;   // 0=Idle, 1=Walking, 2=Running
+  double _distanceKm      = 0.0;
+  double _totalKcal       = 0.0;
+
+  int    get currentSteps   => _currentSteps;
+  int    get currentCadence => _currentCadence;
+  int    get activityState  => _activityState;
+  double get distanceKm     => _distanceKm;
+  double get totalKcal      => _totalKcal;
+
+  String get activityLabel => switch (_activityState) {
+    1 => 'Walking',
+    2 => 'Running',
+    _ => 'Idle',
+  };
+
+  // ─── Light / photobiology accumulators ──────────────────────────────────────
+
+  int    _sunlightSeconds       = 0;
+  int    _nightBlueLightSeconds = 0;
+  double _currentUvIndex        = 0.0;
+  String _skinBurnRisk          = 'Low';
+  int    _circadianScore        = 100;
+  double _currentBlueRatio      = 0.0;
+  double _currentSunLikeIndex   = 0.0;
+
+  int    get sunlightSeconds       => _sunlightSeconds;
+  int    get nightBlueLightSeconds => _nightBlueLightSeconds;
+  double get currentUvIndex        => _currentUvIndex;
+  String get skinBurnRisk          => _skinBurnRisk;
+  int    get circadianScore        => _circadianScore;
+  double get currentBlueRatio      => _currentBlueRatio;
+  double get currentSunLikeIndex   => _currentSunLikeIndex;
+
+  // ─── Initialisation — crash recovery ────────────────────────────────────────
 
   Future<void> init() async {
     final orphan = await _sessionDao.findIncompleteSession();
@@ -48,9 +82,7 @@ class SessionStore extends ChangeNotifier {
     }
   }
 
-  // ---------------------------------------------------------------------------
-  // User management
-  // ---------------------------------------------------------------------------
+  // ─── User management ────────────────────────────────────────────────────────
 
   Future<List<UserProfile>> getAllUsers() => _userDao.findAll();
 
@@ -76,9 +108,7 @@ class SessionStore extends ChangeNotifier {
     notifyListeners();
   }
 
-  // ---------------------------------------------------------------------------
-  // Session lifecycle
-  // ---------------------------------------------------------------------------
+  // ─── Session lifecycle ───────────────────────────────────────────────────────
 
   Future<void> startSession(String deviceId) async {
     assert(_currentUser != null, 'A user must be selected before starting a session.');
@@ -88,7 +118,8 @@ class SessionStore extends ChangeNotifier {
       startedAt: DateTime.now(),
       isActive:  true,
     ));
-    _latestTelemetry = null;
+    _sessionStartTime = DateTime.now();
+    _resetAccumulators();
     notifyListeners();
     debugPrint('SessionStore: session ${_activeSession!.id} started.');
   }
@@ -97,26 +128,40 @@ class SessionStore extends ChangeNotifier {
     if (_activeSession == null) return;
     await _sessionDao.closeSession(_activeSession!.id!, DateTime.now());
     debugPrint('SessionStore: session ${_activeSession!.id} closed.');
-    _activeSession = null;
-    _latestTelemetry = null;
+    _activeSession    = null;
+    _latestTelemetry  = null;
+    _sessionStartTime = null;
+    _resetAccumulators();
     notifyListeners();
   }
 
-  // ---------------------------------------------------------------------------
-  // Unified 1 Hz packet handler
-  // ---------------------------------------------------------------------------
+  void _resetAccumulators() {
+    // Fitness
+    _currentSteps   = 0;
+    _currentCadence = 0;
+    _activityState  = 0;
+    _distanceKm     = 0.0;
+    _totalKcal      = 0.0;
+    // Light
+    _sunlightSeconds       = 0;
+    _nightBlueLightSeconds = 0;
+    _currentUvIndex        = 0.0;
+    _skinBurnRisk          = 'Low';
+    _circadianScore        = 100;
+    _currentBlueRatio      = 0.0;
+    _currentSunLikeIndex   = 0.0;
+  }
 
-  /// Decodes a pre-validated 20-byte [0x55] payload into [UnifiedTelemetry],
-  /// persists it immediately, and updates [latestTelemetry] for the UI.
-  ///
-  /// [rawData] must already pass frame validation (length == 20,
-  /// data[0] == 0x7B, data[19] == 0x7D, data[1] == 0x55).
+  // ─── Unified 1 Hz packet handler ────────────────────────────────────────────
+
+  /// Decodes a pre-validated 20-byte [0x55] payload, persists it, and
+  /// updates all derived fitness + light metrics before notifying the UI.
   Future<void> onUnifiedPacket(List<int> rawData) async {
     if (_activeSession == null) return;
 
-    final payload  = Uint8List.fromList(rawData);
-    final bd       = ByteData.sublistView(payload);
-    final ts       = DateTime.now();
+    final payload = Uint8List.fromList(rawData);
+    final bd      = ByteData.sublistView(payload);
+    final ts      = DateTime.now();
 
     final row = UnifiedTelemetry(
       sessionId:          _activeSession!.id!,
@@ -131,8 +176,70 @@ class SessionStore extends ChangeNotifier {
       clearChannel:       bd.getUint16(14, Endian.little),
     );
 
-    await _sessionDao.insertUnified(row);
+    // Persist first — fire and forget (unawaited intentional for UI latency)
+    unawaited(_sessionDao.insertUnified(row));
+
     _latestTelemetry = row;
+    _updateFitnessMetrics(row);
+    _updateLightMetrics(row, ts);
     notifyListeners();
   }
+
+  // ─── Fitness metric derivation ───────────────────────────────────────────────
+
+  void _updateFitnessMetrics(UnifiedTelemetry r) {
+    _currentSteps   = r.stepCount;
+    _currentCadence = r.cadence;
+    _activityState  = r.activityState;
+
+    // Distance: stride length ≈ 41.4 % of body height (De Vita & Hortobagyi, 2000)
+    final heightCm = _currentUser?.heightCm ?? 170.0;
+    _distanceKm = (_currentSteps * heightCm * 0.414) / 100000.0;
+
+    // Calories: MET formula, 1 packet = 1 second of activity
+    // Kcal/s = (MET × 3.5 × weightKg) / (200 × 60)
+    final weightKg = _currentUser?.weightKg ?? 70.0;
+    final met = switch (_activityState) {
+      2 => 8.0,  // Running
+      1 => 3.5,  // Walking
+      _ => 1.0,  // Idle
+    };
+    _totalKcal += (met * 3.5 * weightKg) / 12000.0;
+  }
+
+  // ─── Light / photobiology metric derivation ──────────────────────────────────
+
+  void _updateLightMetrics(UnifiedTelemetry r, DateTime ts) {
+    _currentBlueRatio    = r.blueLightRatio;
+    _currentSunLikeIndex = r.sunLikeIndex;
+
+    // ── Sunlight accumulation (broad-spectrum daylight threshold)
+    if (r.sunLikeIndex > 0.8) {
+      _sunlightSeconds++;
+      _currentUvIndex = r.uvRisk * 10.0; // Q15 [0-1] → UV index scale [0-10]
+
+      // Skin burn risk: UV index × accumulated sun time
+      if (_currentUvIndex > 7.0 && _sunlightSeconds > 600) {
+        _skinBurnRisk = 'High';
+      } else if (_currentUvIndex > 4.0 && _sunlightSeconds > 1200) {
+        _skinBurnRisk = 'Moderate';
+      } else {
+        _skinBurnRisk = 'Low';
+      }
+    }
+
+    // ── Nighttime blue light (circadian disruption, threshold: 19:00)
+    if (ts.hour >= 19 && r.blueLightRatio > 0.35) {
+      _nightBlueLightSeconds++;
+      // −1 circadian point per 5 min of high-ratio blue light after 19:00
+      if (_nightBlueLightSeconds % 300 == 0 && _circadianScore > 0) {
+        _circadianScore -= 1;
+      }
+    }
+  }
+}
+
+/// Utility — fire-and-forget unawaited helper.
+void unawaited(Future<void> future) {
+  future.catchError((e) => debugPrint('SessionStore unawaited error: $e'));
 }
