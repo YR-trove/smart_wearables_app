@@ -1,15 +1,15 @@
-import 'dart:async'; 
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_reactive_ble/flutter_reactive_ble.dart';
 import 'package:smart_wearables_app/connection/stream.dart';
 import 'package:permission_handler/permission_handler.dart';
-import 'package:smart_wearables_app/home_page.dart';
+import 'package:smart_wearables_app/shell/main_shell.dart';
 
 // --- BLE Service and Characteristic UUIDs ---
 // These are the specific addresses for the BLE device RN4871 (Microchip) on the board.
 Uuid serviceUuid = Uuid.parse("49535343-FE7D-4AE5-8FA9-9FAFD205E455");
-Uuid characteristicUuid = Uuid.parse("49535343-1E4D-4BD9-BA61-23C647249616"); // RX Characteristic 
-Uuid characteristicUuidTX = Uuid.parse("49535343-8841-43F4-A8D4-ECBE34729BB3"); // TX Characteristic 
+Uuid characteristicUuid = Uuid.parse("49535343-1E4D-4BD9-BA61-23C647249616"); // RX Characteristic
+Uuid characteristicUuidTX = Uuid.parse("49535343-8841-43F4-A8D4-ECBE34729BB3"); // TX Characteristic
 
 // --- 1. Widget Definition ---
 class ConnectionPage extends StatefulWidget {
@@ -160,9 +160,10 @@ class _ConnectionPageState extends State<ConnectionPage> {
         connecting = true;
       });
 
-      // Request MTU (Maximum Transmission Unit):
+      // Request MTU (Maximum Transmission Unit)
       final mtu = await flutterReactiveBle.requestMtu(
           deviceId: foundBleDevicesFiltered[index].id, mtu: 512);
+      debugPrint("MTU negotiated: $mtu");
 
       currentConnectionStream = flutterReactiveBle.connectToDevice(
         id: foundBleDevicesFiltered[index].id,
@@ -209,7 +210,7 @@ class _ConnectionPageState extends State<ConnectionPage> {
     debugPrint("Connecting to $id...\n");
   }
 
-  void connectionProcedure(String id, ConnectionStateUpdate event){ 
+  void connectionProcedure(String id, ConnectionStateUpdate event) {
     connected = true;
     connecting = false;
     debugPrint("Connected to $id\n");
@@ -220,28 +221,32 @@ class _ConnectionPageState extends State<ConnectionPage> {
         characteristicId: characteristicUuid,
         deviceId: event.deviceId);
 
-    // --- Packet Buffering Logic ---
-    const int fixedPacketLength = 20; // Our custom packet length (in bytes)
-    List<int> packetBuffer = []; // Temporary buffer
+    // --- Packet Buffering Logic (unchanged) ---
+    const int fixedPacketLength = 20;
+    List<int> packetBuffer = [];
 
     flutterReactiveBle.subscribeToCharacteristic(_rxCharacteristic).listen(
         (packet) {
-      debugPrint("Raw packet: ${packet.length} bytes --> $packet ");
+      debugPrint("Raw packet: ${packet.length} bytes --> $packet");
 
       if ((packetBuffer.length + packet.length) / fixedPacketLength < 1) {
-        debugPrint("pacchetto brutto: ${packet.length}");
+        debugPrint("Short fragment: ${packet.length} bytes");
       } else {
         packetBuffer.addAll(packet);
-        int numPacketsReceived = (packetBuffer.length / fixedPacketLength).floor();
+        int numPackets = (packetBuffer.length / fixedPacketLength).floor();
 
-        for (int i = 0; i < numPacketsReceived; i++) {
+        for (int i = 0; i < numPackets; i++) {
           List<int> data = packetBuffer.sublist(0, fixedPacketLength);
           packetBuffer.removeRange(0, fixedPacketLength);
 
-          // data[0] == '{' (ASCII 123) AND data[19] == '}' (ASCII 125)
+          // Validate frame bytes: '{' (0x7B) ... '}' (0x7D)
           if (data[0] == 123 && data[fixedPacketLength - 1] == 125) {
+            // ── Route validated packet to MyStream ───────────────────────
+            // MainShell._onPacket() listens on controller.stream and handles
+            // further dispatch to SessionStore / chart controllers.
             incomingBLEStream.setNum(data);
-            debugPrint("Valid packet received (Type: ${String.fromCharCode(data[1])})");
+            debugPrint(
+                "Valid packet (Type: ${String.fromCharCode(data[1])})");
           } else {
             debugPrint("Discarding invalid packet: $data");
           }
@@ -262,36 +267,33 @@ class _ConnectionPageState extends State<ConnectionPage> {
           .writeCharacteristicWithoutResponse(_txCharacteristic, value: event);
     });
 
-    // --- 3. Navigation ---
-    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-      content: Text("Connected!"),
-    ));
+    // --- 3. Navigate to MainShell ─────────────────────────────────────────
+    // MainShell replaces the old HomePage.  It embeds the Sensors chart tab
+    // (HomePage) plus the new Fitness and Light tabs, all sharing the same
+    // SessionStore from the ChangeNotifierProvider above MaterialApp.
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text("Connected!")),
+    );
 
-    // Go to the next page (HomePage)
     Navigator.push(
       context,
       MaterialPageRoute(
-          builder: (context) => HomePage(
-                title: "Sensors Data",
-                stream: incomingBLEStream,
-              )),
+        builder: (context) => MainShell(stream: incomingBLEStream),
+      ),
     ).whenComplete(() => forceDisconnection());
   }
 
   void disconnectionProcedure(String id) {
     if (connected) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-        content: Text("Disconnected!"),
-      ));
+      ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("Disconnected!")));
     } else {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-        content: Text("Not connected!"),
-      ));
+      ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("Not connected!")));
     }
     connected = false;
     connecting = false;
     debugPrint("Disconnected from $id\n");
-
     Navigator.popUntil(context, (route) => route.isFirst);
   }
 
@@ -304,9 +306,8 @@ class _ConnectionPageState extends State<ConnectionPage> {
   void forceDisconnection() async {
     if (connected) {
       connection.cancel();
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-        content: Text("Disconnected!"),
-      ));
+      ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("Disconnected!")));
       _startScan();
       setState(() {
         connected = false;
@@ -315,7 +316,7 @@ class _ConnectionPageState extends State<ConnectionPage> {
     }
   }
 
-  // --- 4. Building the UI (User Interface) ---
+  // --- 4. Building the UI ---
   @override
   Widget build(BuildContext context) {
     return Stack(
