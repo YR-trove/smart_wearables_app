@@ -120,10 +120,24 @@ class _MainShellState extends State<MainShell> {
       case MsgType.unifiedState: // 0x55
         context.read<SessionStore>().onUnifiedPacket(frame);
         final bd = ByteData.sublistView(Uint8List.fromList(frame));
-        final cadence = frame[4].toDouble();
+        final steps        = bd.getUint16(2, Endian.little).toDouble(); // NEW
+        final cadence      = frame[4].toDouble();
+        final activity     = frame[5].toDouble();
+        final uvRisk       = bd.getUint16(6, Endian.little).toDouble();
+        final blueIntensity = bd.getUint16(8, Endian.little).toDouble();
+        final blueRatio    = bd.getUint16(10, Endian.little) / 32767.0; 
+        final sunLike      = bd.getUint16(12, Endian.little) / 32767.0;
         final clearChannel = bd.getUint16(14, Endian.little).toDouble();
-        final blueRatio = bd.getUint16(10, Endian.little) / 32767.0;
-        _sensorBuffer.addMetrics(cadence: cadence, lux: clearChannel, blueRatio: blueRatio);
+        _sensorBuffer.addMetrics(
+          steps: steps, // NEW
+          cadence: cadence, 
+          activity: activity,
+          lux: clearChannel, 
+          uvRisk: uvRisk,
+          blueIntensity: blueIntensity,
+          blueRatio: blueRatio,
+          sunLike: sunLike
+        );
 
       case MsgType.accel: // 0x01
         final bd = ByteData.sublistView(Uint8List.fromList(frame));

@@ -43,24 +43,79 @@ class _HomePageState extends State<HomePage> {
           );
         },
       ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: _toggleMode,
-        icon: Icon(_isRawMode ? Icons.analytics : Icons.speed),
-        label: Text(_isRawMode ? 'Switch to Metrics' : 'Switch to Raw Data'),
-        backgroundColor: _isRawMode ? const Color(0xFFEF4444) : theme.colorScheme.primary,
-        foregroundColor: Colors.white,
-      ),
+      // Replace your existing floatingActionButton with this:
+      floatingActionButton: widget.stream != null
+          ? FloatingActionButton.extended(
+              onPressed: _toggleMode,
+              icon: Icon(_isRawMode ? Icons.analytics : Icons.speed),
+              label: Text(_isRawMode ? 'Switch to Metrics' : 'Switch to Raw Data'),
+              backgroundColor: _isRawMode ? const Color(0xFFEF4444) : theme.colorScheme.primary,
+              foregroundColor: Colors.white,
+            )
+          : null, floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat 
+          // Hides the button entirely if disconnected!,
     );
   }
 
   // --- View 1: Unified Metrics ---
   List<Widget> _buildMetricsCharts(bool isDark) {
     return [
-      _ChartCard(title: 'Step Cadence', multiData: [widget.buffer.cadenceHistory], colors: [const Color(0xFF10B981)], isDark: isDark),
+      _ChartCard(
+        title: 'Step Count (Cumulative)', 
+        multiData: [widget.buffer.stepCountHistory], 
+        colors: [const Color(0xFFF472B6)], // Pink
+        isDark: isDark,
+      ),
       const SizedBox(height: 16),
-      _ChartCard(title: 'Illuminance Proxy', multiData: [widget.buffer.luxHistory], colors: [const Color(0xFFFFCA28)], isDark: isDark),
+      _ChartCard(
+        title: 'Activity State (0=Idle, 1=Walk, 2=Run)', 
+        multiData: [widget.buffer.activityHistory], 
+        colors: [const Color(0xFF8B5CF6)], // Purple
+        isDark: isDark,
+      ),
       const SizedBox(height: 16),
-      _ChartCard(title: 'Blue Light Ratio', multiData: [widget.buffer.blueRatioHistory], colors: [const Color(0xFF3B82F6)], isDark: isDark),
+      _ChartCard(
+        title: 'Step Cadence (Steps/min)', 
+        multiData: [widget.buffer.cadenceHistory], 
+        colors: [const Color(0xFF10B981)], // Green
+        isDark: isDark,
+      ),
+      const SizedBox(height: 16),
+      _ChartCard(
+        title: 'Illuminance Proxy (Clear Channel)', 
+        multiData: [widget.buffer.luxHistory], 
+        colors: [const Color(0xFFFFCA28)], // Yellow
+        isDark: isDark,
+      ),
+      const SizedBox(height: 16),
+      _ChartCard(
+        title: 'UV Risk Index', 
+        multiData: [widget.buffer.uvRiskHistory], 
+        colors: [const Color(0xFFEF4444)], // Red
+        isDark: isDark,
+      ),
+      const SizedBox(height: 16),
+      _ChartCard(
+        title: 'Blue Light Intensity', 
+        multiData: [widget.buffer.blueIntensityHistory], 
+        colors: [const Color(0xFF2563EB)], // Deep Blue
+        isDark: isDark,
+      ),
+      const SizedBox(height: 16),
+      _ChartCard(
+        title: 'Blue Light Ratio (Q15)', 
+        multiData: [widget.buffer.blueRatioHistory], 
+        colors: [const Color(0xFF06B6D4)], // Cyan
+        isDark: isDark,
+      ),
+      const SizedBox(height: 16),
+      _ChartCard(
+        title: 'SunLike Index (Q15)', 
+        multiData: [widget.buffer.sunLikeHistory], 
+        colors: [const Color(0xFFF59E0B)], // Amber
+        isDark: isDark,
+      ),
+      const SizedBox(height: 80), // Padding so the FAB doesn't cover the bottom chart
     ];
   }
 

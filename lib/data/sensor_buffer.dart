@@ -5,9 +5,14 @@ class SensorBuffer extends ChangeNotifier {
   static const int _maxPoints = 150;
 
   // --- Metrics Mode Buffers ---
+  final List<double> stepCountHistory = [];       // NEW
   final List<double> cadenceHistory = [];
+  final List<double> activityHistory = [];        // NEW
   final List<double> luxHistory = [];
+  final List<double> uvRiskHistory = [];          // NEW
+  final List<double> blueIntensityHistory = [];   // NEW
   final List<double> blueRatioHistory = [];
+  final List<double> sunLikeHistory = [];         // NEW
 
   // --- Raw IMU Buffers ---
   final List<double> accelX = [], accelY = [], accelZ = [];
@@ -17,10 +22,24 @@ class SensorBuffer extends ChangeNotifier {
   final List<double> f1 = [], f2 = [], f3 = [], f4 = [];
   final List<double> f5 = [], f6 = [], f7 = [], f8 = [];
 
-  void addMetrics({required double cadence, required double lux, required double blueRatio}) {
+  void addMetrics({
+    required double steps,
+    required double cadence,
+    required double activity,
+    required double lux,
+    required double uvRisk,
+    required double blueIntensity,
+    required double blueRatio,
+    required double sunLike,
+  }) {
+    _append(stepCountHistory, steps);
     _append(cadenceHistory, cadence);
+    _append(activityHistory, activity);
     _append(luxHistory, lux);
+    _append(uvRiskHistory, uvRisk);
+    _append(blueIntensityHistory, blueIntensity);
     _append(blueRatioHistory, blueRatio);
+    _append(sunLikeHistory, sunLike);
     notifyListeners();
   }
 
@@ -46,11 +65,20 @@ class SensorBuffer extends ChangeNotifier {
   }
 
   void clear() {
-    cadenceHistory.clear(); luxHistory.clear(); blueRatioHistory.clear();
+    stepCountHistory.clear();
+    cadenceHistory.clear();
+    activityHistory.clear();
+    luxHistory.clear();
+    uvRiskHistory.clear();
+    blueIntensityHistory.clear();
+    blueRatioHistory.clear();
+    sunLikeHistory.clear();
+    
     accelX.clear(); accelY.clear(); accelZ.clear();
     gyroX.clear(); gyroY.clear(); gyroZ.clear();
     f1.clear(); f2.clear(); f3.clear(); f4.clear();
     f5.clear(); f6.clear(); f7.clear(); f8.clear();
+    
     notifyListeners();
   }
 }
