@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:smart_wearables_app/data/sensor_buffer.dart';
 import 'package:smart_wearables_app/connection/stream.dart';
-
 class HomePage extends StatefulWidget {
   final String title;
   final SensorBuffer buffer;
@@ -202,6 +201,7 @@ class _ChartCard extends StatelessWidget {
   }
 }
 
+
 class _MultiOscilloscopePainter extends CustomPainter {
   final List<List<double>> multiData;
   final List<Color> colors;
@@ -211,67 +211,60 @@ class _MultiOscilloscopePainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    // 1. Draw Grid
-    final gridPaint = Paint()..color = gridColor..strokeWidth = 1..style = PaintingStyle.stroke;
-    for (int i = 0; i < 5; i++) {
-      final y = size.height * (i / 4);
-      canvas.drawLine(Offset(0, y), Offset(size.width, y), gridPaint);
-    }
-
     if (multiData.isEmpty || multiData[0].isEmpty) return;
 
-    // 2. Find global min and max across all lines for unified scaling
+    // 1. Calculate scaling
     double maxVal = -double.infinity;
     double minVal = double.infinity;
-    
     for (var series in multiData) {
-      if (series.isEmpty) continue;
-      final sMax = series.reduce((a, b) => a > b ? a : b);
-      final sMin = series.reduce((a, b) => a < b ? a : b);
-      if (sMax > maxVal) maxVal = sMax;
-      if (sMin < minVal) minVal = sMin;
+      for (var val in series) {
+        if (val > maxVal) maxVal = val;
+        if (val < minVal) minVal = val;
+      }
     }
-
-    // Add 10% padding so peaks don't hit the ceiling/floor of the box
-    if (maxVal == minVal) {
-      maxVal += 1; minVal -= 1;
-    } else {
-      final padding = (maxVal - minVal) * 0.1;
-      maxVal += padding;
-      minVal -= padding;
-    }
-    
+    if (maxVal == minVal) { maxVal += 1; minVal -= 1; }
     final range = maxVal - minVal;
-    final stepX = size.width / (multiData[0].length > 1 ? multiData[0].length - 1 : 1);
+    
+    // Reserve space for axis labels
+    final chartHeight = size.height - 20;
+    final chartWidth = size.width - 40;
 
-    // 3. Draw each line
+    // 2. Draw Grid & Y-Axis Labels
+    final gridPaint = Paint()..color = gridColor..strokeWidth = 1;
+    final textStyle = const TextStyle(color: Colors.grey, fontSize: 10);
+
+    for (int i = 0; i <= 4; i++) {
+      final y = size.height - (chartHeight * (i / 4));
+      canvas.drawLine(Offset(0, y), Offset(chartWidth, y), gridPaint);
+      
+      // Paint Y-Axis Value
+      final val = minVal + (range * (i / 4));
+      final textSpan = TextSpan(text: val.toStringAsFixed(1), style: textStyle);
+      final textPainter = TextPainter(text: textSpan, textDirection: TextDirection.ltr)..layout();
+      textPainter.paint(canvas, Offset(chartWidth + 5, y - 5));
+    }
+
+    // 3. Draw Lines
     for (int lineIdx = 0; lineIdx < multiData.length; lineIdx++) {
       final data = multiData[lineIdx];
-      if (data.isEmpty) continue;
-
       final path = Path();
+      final stepX = chartWidth / (data.length - 1);
+
       for (int i = 0; i < data.length; i++) {
         final x = i * stepX;
         final normalizedY = (data[i] - minVal) / range;
-        final y = size.height - (normalizedY * size.height);
-        
-        if (i == 0) 
-        {
+        final y = size.height - (normalizedY * chartHeight);
+        if (i == 0) {
           path.moveTo(x, y);
-        }
-        else 
-        {
+        } else {
           path.lineTo(x, y);
         }
       }
 
-      final linePaint = Paint()
+      canvas.drawPath(path, Paint()
         ..color = colors[lineIdx % colors.length]
         ..strokeWidth = 2.0
-        ..style = PaintingStyle.stroke
-        ..strokeJoin = StrokeJoin.round;
-
-      canvas.drawPath(path, linePaint);
+        ..style = PaintingStyle.stroke);
     }
   }
 
