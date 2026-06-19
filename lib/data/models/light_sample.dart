@@ -1,4 +1,8 @@
-/// One light-sensor packet decoded from the BLE 20-byte frame (type 'L').
+/// One light-sensor packet decoded from the BLE frame.
+/// 
+/// Note: In the v2 Edge Computing architecture, this model is used STRICTLY 
+/// for transient Developer Mode plotting via SensorBuffer. 
+/// It is NEVER persisted to SQLite.
 class LightSample {
   final int      sessionId;
   final DateTime timestamp;
@@ -17,18 +21,6 @@ class LightSample {
     required this.sunLikeIndex,
     required this.metric1,
   });
-
-  /// Maps to the shared sensor_snapshots table.
-  /// f1=uvRisk, f2=blueLightIntensity, f3=blueLightRatio,
-  /// f4=sunLikeIndex, f5=metric1
-  Map<String, dynamic> toMap(int sid) => {
-    'session_id': sid,
-    'ts_ms':      timestamp.millisecondsSinceEpoch,
-    'sensor_type': 'light',
-    'f1': uvRisk,
-    'f2': blueLightIntensity,
-    'f3': blueLightRatio,
-    'f4': sunLikeIndex,
-    'f5': metric1,
-  };
+  
+  // toMap() has been deleted to prevent accidental insertions into dead tables.
 }

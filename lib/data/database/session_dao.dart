@@ -76,11 +76,13 @@ class SessionDao {
   /// double-counting cumulative firmware step values.
   Future<List<Map<String, dynamic>>> weeklyStepSummary() async {
     final db = await _db;
-    // Generate the last 7 days as ISO date strings
+    
+    // Generate the last 7 days to ensure we always return 7 items
     final today = DateTime.now();
     final since = today.subtract(const Duration(days: 6));
     final sinceStr = since.toIso8601String().substring(0, 10);
 
+    // Query the database for the max steps per day
     final rows = await db.rawQuery('''
       SELECT
         substr(s.started_at, 1, 10)  AS day,
@@ -92,15 +94,26 @@ class SessionDao {
       ORDER BY day ASC
     ''', [sinceStr]);
 
-    // Fill in any missing days with 0 steps
+    // Map the SQL results into a quick lookup dictionary
     final Map<String, int> dayMap = {
       for (final r in rows)
         r['day'] as String: (r['steps'] as int? ?? 0),
     };
+
+    // Helper list to convert DateTime.weekday (1-7) to UI strings
+    const weekdayNames = ['', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+
+    // Generate exactly 7 days of data, filling in zeros where needed
     return List.generate(7, (i) {
       final d = since.add(Duration(days: i));
       final key = '${d.year}-${d.month.toString().padLeft(2,'0')}-${d.day.toString().padLeft(2,'0')}';
-      return {'day': key, 'steps': dayMap[key] ?? 0};
+      
+      return {
+        'day_of_week': weekdayNames[d.weekday], // e.g., 'Mon'
+        'max_steps': dayMap[key] ?? 0,          // The step count or 0
+      };
     });
   }
+
+
 }

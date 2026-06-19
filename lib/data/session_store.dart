@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:typed_data';
 import 'package:flutter/foundation.dart';
 import 'package:smart_wearables_app/data/database/session_dao.dart';
 import 'package:smart_wearables_app/data/database/user_dao.dart';
@@ -33,6 +32,10 @@ class SessionStore extends ChangeNotifier {
   SessionModel?     get activeSession   => _activeSession;
   UnifiedTelemetry? get latestTelemetry => _latestTelemetry;
   DateTime?         get sessionStartTime => _sessionStartTime;
+  Duration get elapsed {
+    if (_sessionStartTime == null) return Duration.zero;
+    return DateTime.now().difference(_sessionStartTime!);
+  }
 
   // ─── Fitness accumulators ────────────────────────────────────────────────────
 
@@ -71,6 +74,16 @@ class SessionStore extends ChangeNotifier {
   int    get circadianScore        => _circadianScore;
   double get currentBlueRatio      => _currentBlueRatio;
   double get currentSunLikeIndex   => _currentSunLikeIndex;
+
+// Expose the DAO for UI queries
+SessionDao get sessionDao => _sessionDao;
+
+// Calculate the exposure level string for the UI
+String get blueLightExposureLevel {
+  if (_nightBlueLightSeconds > 3600) return 'High';
+  if (_nightBlueLightSeconds > 1800) return 'Moderate';
+  return 'Low';
+}
 
   // ─── Initialisation — crash recovery ────────────────────────────────────────
 

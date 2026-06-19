@@ -1,6 +1,9 @@
 import 'dart:math';
 import 'package:flutter/material.dart';
 
+/// Base color palette.
+/// Note: Do not use these directly in widgets if you want dynamic light/dark mode.
+/// Use Theme.of(context) instead. These are kept for reference and custom overrides.
 class AppColors {
   static const background = Color(0xFFF5F5F5);
   static const cardBg = Colors.white;
@@ -16,7 +19,7 @@ class AppColors {
   static const amber100 = Color(0xFFFEF3C7);
   static const amber700 = Color(0xFFB45309);
 
-  // Developer dark theme
+  // Developer dark theme base
   static const devBg = Color(0xFF111827);
   static const devCard = Color(0xFF1F2937);
   static const devBorder = Color(0xFF374151);
@@ -25,10 +28,11 @@ class AppColors {
   static const devAccent = Color(0xFF60A5FA);
 }
 
-BoxDecoration get appCardDecoration => BoxDecoration(
-      color: AppColors.cardBg,
+/// Helper method to get the dynamic card decoration
+BoxDecoration appCardDecoration(BuildContext context) => BoxDecoration(
+      color: Theme.of(context).cardColor,
       borderRadius: BorderRadius.circular(16),
-      border: Border.all(color: AppColors.border),
+      border: Border.all(color: Theme.of(context).dividerColor.withValues(alpha: 0.1)),
       boxShadow: [
         BoxShadow(
           color: Colors.black.withValues(alpha: 0.04),
@@ -50,10 +54,10 @@ class SectionLabel extends StatelessWidget {
       padding: const EdgeInsets.only(left: 8, bottom: 4),
       child: Text(
         text.toUpperCase(),
-        style: const TextStyle(
+        style: TextStyle(
           fontSize: 11,
           fontWeight: FontWeight.w600,
-          color: AppColors.muted,
+          color: Theme.of(context).colorScheme.onSurfaceVariant, // Dynamic muted text
           letterSpacing: 1.2,
         ),
       ),
@@ -75,18 +79,22 @@ class AppCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final cardColor = isDark ? const Color(0xFF1E1E1E) : Colors.white;
+    final borderColor = Theme.of(context).dividerColor.withValues(alpha: 0.1);
+
     return Container(
       decoration: BoxDecoration(
-        color: AppColors.cardBg,
+        color: cardColor,
         borderRadius: BorderRadius.circular(16),
         border: leftBorderColor != null
             ? Border(
                 left: BorderSide(color: leftBorderColor!, width: 4),
-                top: BorderSide(color: AppColors.border),
-                right: BorderSide(color: AppColors.border),
-                bottom: BorderSide(color: AppColors.border),
+                top: BorderSide(color: borderColor),
+                right: BorderSide(color: borderColor),
+                bottom: BorderSide(color: borderColor),
               )
-            : Border.all(color: AppColors.border),
+            : Border.all(color: borderColor),
         boxShadow: [
           BoxShadow(
             color: Colors.black.withValues(alpha: 0.04),
@@ -105,23 +113,26 @@ class AppCard extends StatelessWidget {
 
 class AppProgressBar extends StatelessWidget {
   final double value; // 0.0 – 1.0
-  final Color color;
+  final Color? color; // Nullable so it can default to the dynamic theme accent
 
   const AppProgressBar({
     super.key,
     required this.value,
-    this.color = AppColors.accent,
+    this.color,
   });
 
   @override
   Widget build(BuildContext context) {
+    final activeColor = color ?? Theme.of(context).colorScheme.primary;
+    final trackColor = Theme.of(context).dividerColor.withValues(alpha: 0.1);
+
     return ClipRRect(
       borderRadius: BorderRadius.circular(99),
       child: LinearProgressIndicator(
         value: value.clamp(0.0, 1.0),
         minHeight: 8,
-        backgroundColor: AppColors.border,
-        valueColor: AlwaysStoppedAnimation<Color>(color),
+        backgroundColor: trackColor,
+        valueColor: AlwaysStoppedAnimation<Color>(activeColor),
       ),
     );
   }
@@ -131,26 +142,28 @@ class RingGauge extends StatelessWidget {
   final double value; // 0.0 – 1.0
   final double size;
   final double strokeWidth;
-  final Color color;
-  final Color trackColor;
+  final Color? color; // Nullable to default to theme primary
 
   const RingGauge({
     super.key,
     required this.value,
     this.size = 80,
     this.strokeWidth = 8,
-    this.color = AppColors.accent,
-    this.trackColor = const Color(0xFFE5E7EB),
+    this.color,
   });
 
   @override
   Widget build(BuildContext context) {
+    final activeColor = color ?? Theme.of(context).colorScheme.primary;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final trackColor = isDark ? Colors.white12 : const Color(0xFFE5E7EB);
+
     return CustomPaint(
       size: Size(size, size),
       painter: _RingPainter(
         value: value.clamp(0.0, 1.0),
         strokeWidth: strokeWidth,
-        color: color,
+        color: activeColor,
         trackColor: trackColor,
       ),
     );
@@ -211,6 +224,10 @@ class CardRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final primaryTextColor = Theme.of(context).colorScheme.onSurface;
+    final mutedTextColor = Theme.of(context).colorScheme.onSurfaceVariant;
+    final dividerColor = Theme.of(context).dividerColor.withValues(alpha: 0.1);
+
     return Column(
       children: [
         Padding(
@@ -220,26 +237,26 @@ class CardRow extends StatelessWidget {
               Expanded(
                 child: Text(
                   label,
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 15,
                     fontWeight: FontWeight.w500,
-                    color: AppColors.primary,
+                    color: primaryTextColor, // Dynamic primary text
                   ),
                 ),
               ),
               trailing ??
                   Text(
                     value,
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 15,
-                      color: AppColors.muted,
+                      color: mutedTextColor, // Dynamic muted text
                     ),
                   ),
             ],
           ),
         ),
         if (showDivider)
-          const Divider(height: 1, thickness: 1, color: AppColors.divider, indent: 16),
+          Divider(height: 1, thickness: 1, color: dividerColor, indent: 16),
       ],
     );
   }

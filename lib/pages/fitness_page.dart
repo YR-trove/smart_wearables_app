@@ -1,14 +1,9 @@
-import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:smart_wearables_app/data/session_store.dart';
 
 // ---------------------------------------------------------------------------
 // FitnessPage
-//
-// Displays live kinematic & biomechanical metrics derived in SessionStore.
-// This widget is intentionally kept free of any computation logic — it only
-// reads state and renders it.
 // ---------------------------------------------------------------------------
 class FitnessPage extends StatefulWidget {
   const FitnessPage({super.key});
@@ -18,27 +13,6 @@ class FitnessPage extends StatefulWidget {
 }
 
 class _FitnessPageState extends State<FitnessPage> {
-  // A local 1-second timer drives the elapsed-time display so the clock
-  // ticks even when no BLE packet arrives.
-  late final Timer _clockTimer;
-
-  @override
-  void initState() {
-    super.initState();
-    _clockTimer = Timer.periodic(
-      const Duration(seconds: 1),
-      (_) => setState(() {}),
-    );
-  }
-
-  @override
-  void dispose() {
-    _clockTimer.cancel();
-    super.dispose();
-  }
-
-  // ── Helpers ───────────────────────────────────────────────────────────────
-
   String _formatDuration(Duration d) {
     final h = d.inHours.toString().padLeft(2, '0');
     final m = d.inMinutes.remainder(60).toString().padLeft(2, '0');
@@ -79,29 +53,30 @@ class _FitnessPageState extends State<FitnessPage> {
     }
   }
 
-  // ── Build ─────────────────────────────────────────────────────────────────
-
   @override
   Widget build(BuildContext context) {
     final store = context.watch<SessionStore>();
     final theme = Theme.of(context);
     final elapsed = store.elapsed;
+    
+    final primaryText = theme.colorScheme.onSurface;
+    final mutedText = theme.colorScheme.onSurfaceVariant;
 
     return Scaffold(
-      backgroundColor: const Color(0xFF121212),
+      backgroundColor: theme.scaffoldBackgroundColor,
       appBar: AppBar(
-        backgroundColor: const Color(0xFF1A1A1A),
+        backgroundColor: theme.scaffoldBackgroundColor,
         elevation: 0,
-        title: const Text(
+        scrolledUnderElevation: 0,
+        title: Text(
           'Fitness',
           style: TextStyle(
-            color: Colors.white,
+            color: primaryText,
             fontWeight: FontWeight.w600,
             fontSize: 20,
           ),
         ),
         actions: [
-          // Activity state badge
           Padding(
             padding: const EdgeInsets.only(right: 16),
             child: Chip(
@@ -112,9 +87,10 @@ class _FitnessPageState extends State<FitnessPage> {
               ),
               label: Text(
                 _activityLabel(store.activityState),
-                style: const TextStyle(color: Colors.white, fontSize: 12),
+                style: const TextStyle(color: Colors.white, fontSize: 12), // Keep white for contrast on colored badge
               ),
               backgroundColor: _activityColor(store.activityState),
+              side: BorderSide.none,
               padding: EdgeInsets.zero,
             ),
           ),
@@ -125,7 +101,6 @@ class _FitnessPageState extends State<FitnessPage> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            // ── Session clock ──
             _SectionCard(
               child: _BigStatTile(
                 icon: Icons.timer_rounded,
@@ -135,10 +110,7 @@ class _FitnessPageState extends State<FitnessPage> {
                 unit: '',
               ),
             ),
-
             const SizedBox(height: 12),
-
-            // ── Key metrics row ──
             Row(
               children: [
                 Expanded(
@@ -166,23 +138,19 @@ class _FitnessPageState extends State<FitnessPage> {
                 ),
               ],
             ),
-
             const SizedBox(height: 12),
-
-            // ── Calorie meter ──
             _SectionCard(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Row(
                     children: [
-                      const Icon(Icons.local_fire_department_rounded,
-                          color: Color(0xFFEF5350), size: 22),
+                      const Icon(Icons.local_fire_department_rounded, color: Color(0xFFEF5350), size: 22),
                       const SizedBox(width: 8),
                       Text(
                         'Calories Burned',
                         style: theme.textTheme.titleMedium?.copyWith(
-                          color: Colors.white70,
+                          color: mutedText,
                           fontSize: 14,
                         ),
                       ),
@@ -194,50 +162,45 @@ class _FitnessPageState extends State<FitnessPage> {
                     children: [
                       Text(
                         store.totalKcal.toStringAsFixed(1),
-                        style: const TextStyle(
-                          color: Colors.white,
+                        style: TextStyle(
+                          color: primaryText,
                           fontSize: 42,
                           fontWeight: FontWeight.bold,
                           letterSpacing: -1,
                         ),
                       ),
                       const SizedBox(width: 6),
-                      const Padding(
-                        padding: EdgeInsets.only(bottom: 6),
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 6),
                         child: Text(
                           'kcal',
-                          style: TextStyle(color: Colors.white38, fontSize: 16),
+                          style: TextStyle(color: mutedText, fontSize: 16),
                         ),
                       ),
                     ],
                   ),
                   const SizedBox(height: 8),
-                  // Visual burn bar — relative to a 500 kcal daily goal
                   _BurnBar(kcal: store.totalKcal, goalKcal: 500),
                 ],
               ),
             ),
-
             const SizedBox(height: 12),
-
-            // ── Weekly steps chart ──
             _SectionCard(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Row(
+                  Row(
                     children: [
-                      Icon(Icons.bar_chart_rounded,
-                          color: Color(0xFFAB47BC), size: 22),
-                      SizedBox(width: 8),
+                      const Icon(Icons.bar_chart_rounded, color: Color(0xFFAB47BC), size: 22),
+                      const SizedBox(width: 8),
                       Text(
                         'Weekly Steps',
-                        style: TextStyle(color: Colors.white70, fontSize: 14),
+                        style: TextStyle(color: mutedText, fontSize: 14),
                       ),
                     ],
                   ),
                   const SizedBox(height: 16),
-                  _WeeklyStepsChart(),
+                  const _WeeklyStepsChart(),
                 ],
               ),
             ),
@@ -258,12 +221,13 @@ class _SectionCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: const Color(0xFF1E1E1E),
+        color: theme.cardColor,
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: Colors.white.withOpacity(0.06)),
+        border: Border.all(color: theme.dividerColor.withValues(alpha: 0.1)),
       ),
       child: child,
     );
@@ -287,6 +251,7 @@ class _BigStatTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -294,9 +259,7 @@ class _BigStatTile extends StatelessWidget {
           children: [
             Icon(icon, color: iconColor, size: 18),
             const SizedBox(width: 6),
-            Text(label,
-                style:
-                    const TextStyle(color: Colors.white54, fontSize: 12)),
+            Text(label, style: TextStyle(color: theme.colorScheme.onSurfaceVariant, fontSize: 12)),
           ],
         ),
         const SizedBox(height: 6),
@@ -305,23 +268,20 @@ class _BigStatTile extends StatelessWidget {
           children: [
             Text(
               value,
-              style: const TextStyle(
-                color: Colors.white,
+              style: TextStyle(
+                color: theme.colorScheme.onSurface,
                 fontSize: 32,
                 fontWeight: FontWeight.bold,
                 letterSpacing: -0.5,
               ),
             ),
-            if (unit.isNotEmpty) ...
-              [
-                const SizedBox(width: 4),
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 4),
-                  child: Text(unit,
-                      style: const TextStyle(
-                          color: Colors.white38, fontSize: 14)),
-                ),
-              ],
+            if (unit.isNotEmpty) ...[
+              const SizedBox(width: 4),
+              Padding(
+                padding: const EdgeInsets.only(bottom: 4),
+                child: Text(unit, style: TextStyle(color: theme.colorScheme.onSurfaceVariant, fontSize: 14)),
+              ),
+            ],
           ],
         ),
       ],
@@ -336,6 +296,7 @@ class _BurnBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
     final progress = (kcal / goalKcal).clamp(0.0, 1.0);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.end,
@@ -345,78 +306,74 @@ class _BurnBar extends StatelessWidget {
           child: LinearProgressIndicator(
             value: progress,
             minHeight: 8,
-            backgroundColor: Colors.white12,
+            backgroundColor: theme.dividerColor.withValues(alpha: 0.1),
             valueColor: const AlwaysStoppedAnimation<Color>(Color(0xFFEF5350)),
           ),
         ),
         const SizedBox(height: 4),
         Text(
           '${(progress * 100).toStringAsFixed(0)}% of ${goalKcal.toInt()} kcal goal',
-          style: const TextStyle(color: Colors.white38, fontSize: 11),
+          style: TextStyle(color: theme.colorScheme.onSurfaceVariant, fontSize: 11),
         ),
       ],
     );
   }
 }
 
-/// Placeholder chart — replace body of FutureBuilder with a real DB query
-/// (SELECT day, MAX(step_count) FROM sensor_snapshots
-///  WHERE ts > datetime('now', '-7 days') GROUP BY date(ts))
-/// and feed the results into the bar painter below.
 class _WeeklyStepsChart extends StatelessWidget {
-  // Placeholder data — wire to actual SQLite DAO in final integration
-  static const List<_DaySteps> _placeholder = [
-    _DaySteps('Mon', 4200),
-    _DaySteps('Tue', 7800),
-    _DaySteps('Wed', 5100),
-    _DaySteps('Thu', 9400),
-    _DaySteps('Fri', 3300),
-    _DaySteps('Sat', 11200),
-    _DaySteps('Sun', 6700),
-  ];
-
   const _WeeklyStepsChart();
 
   @override
   Widget build(BuildContext context) {
     const maxSteps = 12000.0;
-    return SizedBox(
-      height: 120,
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.end,
-        children: _placeholder.map((d) {
-          final frac = d.steps / maxSteps;
-          return Expanded(
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 3),
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.end,
-                children: [
-                  AnimatedContainer(
-                    duration: const Duration(milliseconds: 600),
-                    curve: Curves.easeOutCubic,
-                    height: frac * 90,
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFAB47BC),
-                      borderRadius: BorderRadius.circular(4),
-                    ),
+    final theme = Theme.of(context);
+
+    return FutureBuilder<List<Map<String, dynamic>>>(
+      future: context.read<SessionStore>().sessionDao.weeklyStepSummary(),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const SizedBox(height: 120, child: Center(child: CircularProgressIndicator()));
+        }
+        if (!snapshot.hasData || snapshot.data!.isEmpty) {
+          return SizedBox(height: 120, child: Center(child: Text('No data for this week', style: TextStyle(color: theme.colorScheme.onSurfaceVariant))));
+        }
+
+        final data = snapshot.data!;
+
+        return SizedBox(
+          height: 120,
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: data.map((row) {
+              final int steps = row['max_steps'] as int;
+              final String dayStr = row['day_of_week'] as String;
+              final double frac = (steps / maxSteps).clamp(0.0, 1.0);
+
+              return Expanded(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 3),
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.end,
+                    children: [
+                      AnimatedContainer(
+                        duration: const Duration(milliseconds: 600),
+                        curve: Curves.easeOutCubic,
+                        height: frac * 90,
+                        decoration: BoxDecoration(
+                          color: theme.colorScheme.primary, // Dynamically use the theme accent
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(dayStr, style: TextStyle(color: theme.colorScheme.onSurfaceVariant, fontSize: 10)),
+                    ],
                   ),
-                  const SizedBox(height: 4),
-                  Text(d.day,
-                      style: const TextStyle(
-                          color: Colors.white38, fontSize: 10)),
-                ],
-              ),
-            ),
-          );
-        }).toList(),
-      ),
+                ),
+              );
+            }).toList(),
+          ),
+        );
+      },
     );
   }
-}
-
-class _DaySteps {
-  final String day;
-  final int steps;
-  const _DaySteps(this.day, this.steps);
 }

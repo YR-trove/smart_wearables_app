@@ -4,15 +4,9 @@ import 'package:smart_wearables_app/data/session_store.dart';
 
 // ---------------------------------------------------------------------------
 // LightPage
-//
-// Displays photobiology metrics derived from the AS7341 spectral sensor.
-// All computation lives in SessionStore._processLightMetrics();
-// this widget only reads and visualises the results.
 // ---------------------------------------------------------------------------
 class LightPage extends StatelessWidget {
   const LightPage({super.key});
-
-  // ── Helpers ─────────────────────────────────────────────────────────────
 
   String _formatSeconds(int s) {
     if (s < 60) return '${s}s';
@@ -43,21 +37,23 @@ class LightPage extends StatelessWidget {
     }
   }
 
-  // ── Build ────────────────────────────────────────────────────────────────
-
   @override
   Widget build(BuildContext context) {
     final store = context.watch<SessionStore>();
+    final theme = Theme.of(context);
+    
+    final primaryText = theme.colorScheme.onSurface;
 
     return Scaffold(
-      backgroundColor: const Color(0xFF121212),
+      backgroundColor: theme.scaffoldBackgroundColor,
       appBar: AppBar(
-        backgroundColor: const Color(0xFF1A1A1A),
+        backgroundColor: theme.scaffoldBackgroundColor,
         elevation: 0,
-        title: const Text(
+        scrolledUnderElevation: 0,
+        title: Text(
           'Light Environment',
           style: TextStyle(
-            color: Colors.white,
+            color: primaryText,
             fontWeight: FontWeight.w600,
             fontSize: 20,
           ),
@@ -68,12 +64,8 @@ class LightPage extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            // ── Circadian score hero card ──
             _CircadianScoreCard(score: store.circadianScore),
-
             const SizedBox(height: 12),
-
-            // ── Sunlight exposure card ──
             _LightCard(
               icon: Icons.wb_sunny_rounded,
               iconColor: const Color(0xFFFFCA28),
@@ -82,13 +74,13 @@ class LightPage extends StatelessWidget {
                 _MetricRow(
                   label: 'Total Time',
                   value: _formatSeconds(store.sunlightSeconds),
-                  valueColor: Colors.white,
+                  valueColor: primaryText,
                 ),
                 const SizedBox(height: 8),
                 _MetricRow(
                   label: 'UV Index',
                   value: store.currentUvIndex.toStringAsFixed(1),
-                  valueColor: Colors.white,
+                  valueColor: primaryText,
                 ),
                 const SizedBox(height: 8),
                 _MetricRow(
@@ -97,7 +89,6 @@ class LightPage extends StatelessWidget {
                   valueColor: _riskColor(store.skinBurnRisk),
                 ),
                 const SizedBox(height: 12),
-                // Sunlight progress bar (goal: 20 min = 1200 s for vitamin D)
                 _ExposureBar(
                   seconds: store.sunlightSeconds,
                   goalSeconds: 1200,
@@ -106,10 +97,7 @@ class LightPage extends StatelessWidget {
                 ),
               ],
             ),
-
             const SizedBox(height: 12),
-
-            // ── Night blue-light exposure card ──
             _LightCard(
               icon: Icons.nights_stay_rounded,
               iconColor: const Color(0xFF5C6BC0),
@@ -118,7 +106,7 @@ class LightPage extends StatelessWidget {
                 _MetricRow(
                   label: 'Exposure (after 19:00)',
                   value: _formatSeconds(store.nightBlueLightSeconds),
-                  valueColor: Colors.white,
+                  valueColor: primaryText,
                 ),
                 const SizedBox(height: 8),
                 _MetricRow(
@@ -127,7 +115,6 @@ class LightPage extends StatelessWidget {
                   valueColor: _exposureColor(store.blueLightExposureLevel),
                 ),
                 const SizedBox(height: 12),
-                // Blue-light bar (3600 s = High threshold)
                 _ExposureBar(
                   seconds: store.nightBlueLightSeconds,
                   goalSeconds: 3600,
@@ -136,10 +123,7 @@ class LightPage extends StatelessWidget {
                 ),
               ],
             ),
-
             const SizedBox(height: 12),
-
-            // ── UV index gauge card ──
             _LightCard(
               icon: Icons.thermostat_rounded,
               iconColor: const Color(0xFFEF5350),
@@ -174,12 +158,13 @@ class _LightCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: const Color(0xFF1E1E1E),
+        color: theme.cardColor,
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: Colors.white.withOpacity(0.06)),
+        border: Border.all(color: theme.dividerColor.withValues(alpha: 0.1)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -188,11 +173,14 @@ class _LightCard extends StatelessWidget {
             children: [
               Icon(icon, color: iconColor, size: 20),
               const SizedBox(width: 8),
-              Text(title,
-                  style: const TextStyle(
-                      color: Colors.white70,
-                      fontSize: 14,
-                      fontWeight: FontWeight.w500)),
+              Text(
+                title,
+                style: TextStyle(
+                  color: theme.colorScheme.onSurfaceVariant,
+                  fontSize: 14,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
             ],
           ),
           const SizedBox(height: 14),
@@ -216,17 +204,19 @@ class _MetricRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
-        Text(label,
-            style:
-                const TextStyle(color: Colors.white38, fontSize: 13)),
-        Text(value,
-            style: TextStyle(
-                color: valueColor,
-                fontSize: 14,
-                fontWeight: FontWeight.w600)),
+        Text(label, style: TextStyle(color: theme.colorScheme.onSurfaceVariant, fontSize: 13)),
+        Text(
+          value,
+          style: TextStyle(
+            color: valueColor,
+            fontSize: 14,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
       ],
     );
   }
@@ -247,6 +237,7 @@ class _ExposureBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
     final progress = (seconds / goalSeconds).clamp(0.0, 1.0);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.end,
@@ -256,21 +247,20 @@ class _ExposureBar extends StatelessWidget {
           child: LinearProgressIndicator(
             value: progress,
             minHeight: 8,
-            backgroundColor: Colors.white12,
+            backgroundColor: theme.dividerColor.withValues(alpha: 0.1),
             valueColor: AlwaysStoppedAnimation<Color>(color),
           ),
         ),
         const SizedBox(height: 4),
         Text(
           goalLabel,
-          style: const TextStyle(color: Colors.white30, fontSize: 11),
+          style: TextStyle(color: theme.colorScheme.onSurfaceVariant, fontSize: 11),
         ),
       ],
     );
   }
 }
 
-/// Large circular score widget for the circadian rhythm score (0–100).
 class _CircadianScoreCard extends StatelessWidget {
   final int score;
   const _CircadianScoreCard({required this.score});
@@ -289,18 +279,19 @@ class _CircadianScoreCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: const Color(0xFF1E1E1E),
+        color: theme.cardColor,
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: Colors.white.withOpacity(0.06)),
+        border: Border.all(color: theme.dividerColor.withValues(alpha: 0.1)),
       ),
       child: Column(
         children: [
-          const Text(
+          Text(
             'Circadian Rhythm Score',
-            style: TextStyle(color: Colors.white70, fontSize: 14),
+            style: TextStyle(color: theme.colorScheme.onSurfaceVariant, fontSize: 14),
           ),
           const SizedBox(height: 16),
           SizedBox(
@@ -309,13 +300,25 @@ class _CircadianScoreCard extends StatelessWidget {
             child: Stack(
               alignment: Alignment.center,
               children: [
-                CircularProgressIndicator(
-                  value: score / 100.0,
-                  strokeWidth: 10,
-                  backgroundColor: Colors.white12,
-                  valueColor: AlwaysStoppedAnimation<Color>(_scoreColor),
-                  strokeCap: StrokeCap.round,
+                SizedBox(
+            width: 140,
+            height: 140,
+            child: Stack(
+              alignment: Alignment.center,
+              children: [
+                // --- WRAP ONLY THIS WIDGET ---
+                SizedBox.expand(
+                  child: CircularProgressIndicator(
+                    value: score / 100.0,
+                    strokeWidth: 10,
+                    backgroundColor: theme.dividerColor.withValues(alpha: 0.1),
+                    valueColor: AlwaysStoppedAnimation<Color>(_scoreColor),
+                    strokeCap: StrokeCap.round,
+                  ),
                 ),
+                // --- END OF WRAP ---
+                
+                // The text remains exactly as it was:
                 Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
@@ -329,8 +332,27 @@ class _CircadianScoreCard extends StatelessWidget {
                     ),
                     Text(
                       _scoreLabel,
-                      style: const TextStyle(
-                          color: Colors.white54, fontSize: 12),
+                      style: TextStyle(color: theme.colorScheme.onSurfaceVariant, fontSize: 12),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+                Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      '$score',
+                      style: TextStyle(
+                        color: _scoreColor,
+                        fontSize: 38,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    Text(
+                      _scoreLabel,
+                      style: TextStyle(color: theme.colorScheme.onSurfaceVariant, fontSize: 12),
                     ),
                   ],
                 ),
@@ -338,10 +360,10 @@ class _CircadianScoreCard extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 10),
-          const Text(
+          Text(
             'Score resets to 100 each morning. Deducted by night-time blue light after 19:00.',
             textAlign: TextAlign.center,
-            style: TextStyle(color: Colors.white30, fontSize: 11),
+            style: TextStyle(color: theme.colorScheme.onSurfaceVariant, fontSize: 11),
           ),
         ],
       ),
@@ -349,7 +371,6 @@ class _CircadianScoreCard extends StatelessWidget {
   }
 }
 
-/// A horizontal UV-index scale bar with a moving needle indicator.
 class _UvGauge extends StatelessWidget {
   final double uvIndex;
   const _UvGauge({required this.uvIndex});
@@ -372,7 +393,9 @@ class _UvGauge extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
     final fraction = (uvIndex / 11.0).clamp(0.0, 1.0);
+    
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -388,12 +411,11 @@ class _UvGauge extends StatelessWidget {
               ),
             ),
             Container(
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
               decoration: BoxDecoration(
-                color: _uvColor.withOpacity(0.15),
+                color: _uvColor.withValues(alpha: 0.15),
                 borderRadius: BorderRadius.circular(20),
-                border: Border.all(color: _uvColor.withOpacity(0.4)),
+                border: Border.all(color: _uvColor.withValues(alpha: 0.4)),
               ),
               child: Text(
                 _uvLabel,
@@ -406,7 +428,6 @@ class _UvGauge extends StatelessWidget {
           ],
         ),
         const SizedBox(height: 12),
-        // Gradient scale bar
         ClipRRect(
           borderRadius: BorderRadius.circular(6),
           child: Container(
@@ -425,24 +446,21 @@ class _UvGauge extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 4),
-        // Needle
         FractionallySizedBox(
           widthFactor: fraction,
           alignment: Alignment.centerLeft,
-          child: const Align(
+          child: Align(
             alignment: Alignment.centerRight,
-            child: Icon(Icons.arrow_drop_up_rounded,
-                color: Colors.white70, size: 18),
+            child: Icon(Icons.arrow_drop_up_rounded, color: theme.colorScheme.onSurface, size: 18),
           ),
         ),
         const SizedBox(height: 2),
-        const Row(
+        Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            Text('0', style: TextStyle(color: Colors.white30, fontSize: 10)),
-            Text('5', style: TextStyle(color: Colors.white30, fontSize: 10)),
-            Text('11+',
-                style: TextStyle(color: Colors.white30, fontSize: 10)),
+            Text('0', style: TextStyle(color: theme.colorScheme.onSurfaceVariant, fontSize: 10)),
+            Text('5', style: TextStyle(color: theme.colorScheme.onSurfaceVariant, fontSize: 10)),
+            Text('11+', style: TextStyle(color: theme.colorScheme.onSurfaceVariant, fontSize: 10)),
           ],
         ),
       ],

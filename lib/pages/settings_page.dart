@@ -1,5 +1,9 @@
+// ignore_for_file: deprecated_member_use
+
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+import 'package:smart_wearables_app/theme_provider.dart'; // Adjust path if needed
 import '../app_theme.dart';
 
 class SettingsPage extends StatefulWidget {
@@ -17,8 +21,6 @@ class SettingsPage extends StatefulWidget {
 }
 
 class _SettingsPageState extends State<SettingsPage> {
-  int _themeIndex = 1; // 0=Light, 1=Dark, 2=Auto
-  int _accentIndex = 0;
   bool _notifBlue = true;
   bool _notifNoise = true;
   bool _notifCircadian = false;
@@ -35,15 +37,15 @@ class _SettingsPageState extends State<SettingsPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.background,
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       appBar: AppBar(
-        backgroundColor: AppColors.background,
+        backgroundColor: Theme.of(context).scaffoldBackgroundColor,
         elevation: 0,
         scrolledUnderElevation: 0,
         centerTitle: true,
-        title: const Text(
+        title: Text(
           'Settings',
-          style: TextStyle(fontSize: 17, fontWeight: FontWeight.w600, color: AppColors.primary),
+          style: TextStyle(fontSize: 17, fontWeight: FontWeight.w600, color: Theme.of(context).colorScheme.onSurface),
         ),
       ),
       body: ListView(
@@ -66,6 +68,9 @@ class _SettingsPageState extends State<SettingsPage> {
   }
 
   Widget _profileCard() {
+    final cardColor = Theme.of(context).cardColor;
+    final mutedText = Theme.of(context).colorScheme.onSurfaceVariant;
+
     return AppCard(
       padding: const EdgeInsets.all(16),
       child: Row(
@@ -74,11 +79,11 @@ class _SettingsPageState extends State<SettingsPage> {
             children: [
               CircleAvatar(
                 radius: 30,
-                backgroundColor: AppColors.border,
-                child: const Text(
+                backgroundColor: Theme.of(context).dividerColor.withValues(alpha: 0.1),
+                child: Text(
                   'AJ',
                   style: TextStyle(
-                    color: AppColors.primary,
+                    color: Theme.of(context).colorScheme.onSurface,
                     fontWeight: FontWeight.w600,
                     fontSize: 18,
                   ),
@@ -93,7 +98,8 @@ class _SettingsPageState extends State<SettingsPage> {
                   decoration: BoxDecoration(
                     color: AppColors.success,
                     shape: BoxShape.circle,
-                    border: Border.all(color: Colors.white, width: 2),
+                    // Dynamic border so it matches the card background (dark or light)
+                    border: Border.all(color: cardColor, width: 2),
                   ),
                 ),
               ),
@@ -102,19 +108,19 @@ class _SettingsPageState extends State<SettingsPage> {
           const SizedBox(width: 16),
           Column(
             crossAxisAlignment: CrossAxisAlignment.start,
-            children: const [
+            children: [
               Text(
                 'Alex Johnson',
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600, color: AppColors.primary),
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600, color: Theme.of(context).colorScheme.onSurface),
               ),
-              SizedBox(height: 4),
+              const SizedBox(height: 4),
               Row(
                 children: [
-                  Icon(Icons.circle, size: 8, color: AppColors.success),
-                  SizedBox(width: 6),
+                  const Icon(Icons.circle, size: 8, color: AppColors.success),
+                  const SizedBox(width: 6),
                   Text(
                     'BLE_SW Connected',
-                    style: TextStyle(fontSize: 13, color: AppColors.muted, fontWeight: FontWeight.w500),
+                    style: TextStyle(fontSize: 13, color: mutedText, fontWeight: FontWeight.w500),
                   ),
                 ],
               ),
@@ -126,6 +132,9 @@ class _SettingsPageState extends State<SettingsPage> {
   }
 
   Widget _appearanceSection() {
+    final themeProvider = context.watch<ThemeProvider>();
+    final dividerColor = Theme.of(context).dividerColor.withValues(alpha: 0.1);
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -139,49 +148,42 @@ class _SettingsPageState extends State<SettingsPage> {
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    const Text('Theme', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w500, color: AppColors.primary)),
+                    Text('Theme', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w500, color: Theme.of(context).colorScheme.onSurface)),
                     CupertinoSlidingSegmentedControl<int>(
-                      groupValue: _themeIndex,
-                      onValueChanged: (v) => setState(() => _themeIndex = v ?? _themeIndex),
+                      groupValue: themeProvider.themeIndex,
+                      onValueChanged: (v) {
+                        if (v != null) context.read<ThemeProvider>().setThemeMode(v);
+                      },
                       children: const {
-                        0: Padding(
-                          padding: EdgeInsets.symmetric(horizontal: 6),
-                          child: Text('Light', style: TextStyle(fontSize: 12)),
-                        ),
-                        1: Padding(
-                          padding: EdgeInsets.symmetric(horizontal: 6),
-                          child: Text('Dark', style: TextStyle(fontSize: 12)),
-                        ),
-                        2: Padding(
-                          padding: EdgeInsets.symmetric(horizontal: 6),
-                          child: Text('Auto', style: TextStyle(fontSize: 12)),
-                        ),
+                        0: Padding(padding: EdgeInsets.symmetric(horizontal: 6), child: Text('Light', style: TextStyle(fontSize: 12))),
+                        1: Padding(padding: EdgeInsets.symmetric(horizontal: 6), child: Text('Dark', style: TextStyle(fontSize: 12))),
+                        2: Padding(padding: EdgeInsets.symmetric(horizontal: 6), child: Text('Auto', style: TextStyle(fontSize: 12))),
                       },
                     ),
                   ],
                 ),
               ),
-              const Divider(height: 1, thickness: 1, color: AppColors.divider),
+              Divider(height: 1, thickness: 1, color: dividerColor),
               Padding(
                 padding: const EdgeInsets.all(16),
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    const Text('Accent Color', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w500, color: AppColors.primary)),
+                    Text('Accent Color', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w500, color: Theme.of(context).colorScheme.onSurface)),
                     Row(
-                      children: _accentColors.asMap().entries.map((e) {
-                        final selected = e.key == _accentIndex;
+                      children: _accentColors.map((color) {
+                        final selected = color.value == themeProvider.accentColor.value;
                         return GestureDetector(
-                          onTap: () => setState(() => _accentIndex = e.key),
+                          onTap: () => context.read<ThemeProvider>().setAccentColor(color),
                           child: Container(
                             width: 24,
                             height: 24,
                             margin: const EdgeInsets.only(left: 8),
                             decoration: BoxDecoration(
-                              color: e.value,
+                              color: color,
                               shape: BoxShape.circle,
                               border: selected
-                                  ? Border.all(color: AppColors.inactive, width: 2)
+                                  ? Border.all(color: Theme.of(context).colorScheme.onSurface, width: 2)
                                   : null,
                             ),
                             child: selected
@@ -222,6 +224,8 @@ class _SettingsPageState extends State<SettingsPage> {
   }
 
   Widget _switchRow(String label, bool value, ValueChanged<bool> onChanged, {bool last = false}) {
+    final dividerColor = Theme.of(context).dividerColor.withValues(alpha: 0.1);
+    
     return Column(
       children: [
         Padding(
@@ -229,16 +233,16 @@ class _SettingsPageState extends State<SettingsPage> {
           child: Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text(label, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w500, color: AppColors.primary)),
+              Text(label, style: TextStyle(fontSize: 15, fontWeight: FontWeight.w500, color: Theme.of(context).colorScheme.onSurface)),
               CupertinoSwitch(
                 value: value,
                 onChanged: onChanged,
-                activeTrackColor: AppColors.accent,
+                activeTrackColor: Theme.of(context).colorScheme.primary,
               ),
             ],
           ),
         ),
-        if (!last) const Divider(height: 1, thickness: 1, color: AppColors.divider),
+        if (!last) Divider(height: 1, thickness: 1, color: dividerColor),
       ],
     );
   }
@@ -263,6 +267,9 @@ class _SettingsPageState extends State<SettingsPage> {
   }
 
   Widget _chevronRow(String label, String value, {bool last = false}) {
+    final mutedText = Theme.of(context).colorScheme.onSurfaceVariant;
+    final dividerColor = Theme.of(context).dividerColor.withValues(alpha: 0.1);
+
     return Column(
       children: [
         Padding(
@@ -270,20 +277,23 @@ class _SettingsPageState extends State<SettingsPage> {
           child: Row(
             children: [
               Expanded(
-                child: Text(label, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w500, color: AppColors.primary)),
+                child: Text(label, style: TextStyle(fontSize: 15, fontWeight: FontWeight.w500, color: Theme.of(context).colorScheme.onSurface)),
               ),
-              Text(value, style: const TextStyle(fontSize: 14, color: AppColors.muted)),
+              Text(value, style: TextStyle(fontSize: 14, color: mutedText)),
               const SizedBox(width: 4),
-              const Icon(Icons.chevron_right, size: 18, color: AppColors.inactive),
+              Icon(Icons.chevron_right, size: 18, color: mutedText),
             ],
           ),
         ),
-        if (!last) const Divider(height: 1, thickness: 1, color: AppColors.divider),
+        if (!last) Divider(height: 1, thickness: 1, color: dividerColor),
       ],
     );
   }
 
   Widget _developerSection() {
+    final mutedText = Theme.of(context).colorScheme.onSurfaceVariant;
+    final dividerColor = Theme.of(context).dividerColor.withValues(alpha: 0.1);
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -300,11 +310,11 @@ class _SettingsPageState extends State<SettingsPage> {
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        const Text('Developer Mode', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w500, color: AppColors.primary)),
+                        Text('Developer Mode', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w500, color: Theme.of(context).colorScheme.onSurface)),
                         CupertinoSwitch(
                           value: widget.devMode,
                           onChanged: widget.onDevModeChanged,
-                          activeTrackColor: AppColors.accent,
+                          activeTrackColor: Theme.of(context).colorScheme.primary,
                         ),
                       ],
                     ),
@@ -313,33 +323,33 @@ class _SettingsPageState extends State<SettingsPage> {
                       widget.devMode
                           ? 'Developer Dashboard is now visible in navigation'
                           : 'Enables real-time sensor data dashboard',
-                      style: const TextStyle(fontSize: 13, color: AppColors.muted),
+                      style: TextStyle(fontSize: 13, color: mutedText),
                     ),
                   ],
                 ),
               ),
-              const Divider(height: 1, thickness: 1, color: AppColors.divider),
+              Divider(height: 1, thickness: 1, color: dividerColor),
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: const [
-                    Text('Firmware Version', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w500, color: AppColors.primary)),
-                    Text('v1.2.4', style: TextStyle(fontSize: 14, color: AppColors.muted)),
+                  children: [
+                    Text('Firmware Version', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w500, color: Theme.of(context).colorScheme.onSurface)),
+                    Text('v1.2.4', style: TextStyle(fontSize: 14, color: mutedText)),
                   ],
                 ),
               ),
-              const Divider(height: 1, thickness: 1, color: AppColors.divider),
+              Divider(height: 1, thickness: 1, color: dividerColor),
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
                 child: Row(
-                  children: const [
+                  children: [
                     Expanded(
-                      child: Text('BLE Debug', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w500, color: AppColors.primary)),
+                      child: Text('BLE Debug', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w500, color: Theme.of(context).colorScheme.onSurface)),
                     ),
-                    Text('View raw packets', style: TextStyle(fontSize: 14, color: AppColors.muted)),
-                    SizedBox(width: 4),
-                    Icon(Icons.chevron_right, size: 18, color: AppColors.inactive),
+                    Text('View raw packets', style: TextStyle(fontSize: 14, color: mutedText)),
+                    const SizedBox(width: 4),
+                    Icon(Icons.chevron_right, size: 18, color: mutedText),
                   ],
                 ),
               ),
@@ -351,6 +361,9 @@ class _SettingsPageState extends State<SettingsPage> {
   }
 
   Widget _aboutSection() {
+    final mutedText = Theme.of(context).colorScheme.onSurfaceVariant;
+    final dividerColor = Theme.of(context).dividerColor.withValues(alpha: 0.1);
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -362,15 +375,15 @@ class _SettingsPageState extends State<SettingsPage> {
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
                 child: Row(
-                  children: const [
+                  children: [
                     Expanded(
-                      child: Text('App Version', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w500, color: AppColors.primary)),
+                      child: Text('App Version', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w500, color: Theme.of(context).colorScheme.onSurface)),
                     ),
-                    Text('2.0.1 (Build 42)', style: TextStyle(fontSize: 13, color: AppColors.muted)),
+                    Text('2.0.1 (Build 42)', style: TextStyle(fontSize: 13, color: mutedText)),
                   ],
                 ),
               ),
-              const Divider(height: 1, thickness: 1, color: AppColors.divider),
+              Divider(height: 1, thickness: 1, color: dividerColor),
               _chevronRow('Privacy Policy', '', last: false),
               _chevronRow('Contact Support', '', last: true),
             ],

@@ -20,7 +20,7 @@ class ChartData {
 // Data flows exclusively from SensorBuffer streams.
 // ---------------------------------------------------------------------------
 class HomePage extends StatefulWidget {
-  const HomePage({
+  HomePage({
     super.key,
     required this.title,
     required this.buffer,
