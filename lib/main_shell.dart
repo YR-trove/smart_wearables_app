@@ -35,6 +35,8 @@ class _MainShellState extends State<MainShell> {
   bool _devMode = false;
 
   final SensorBuffer _sensorBuffer = SensorBuffer();
+  // The holding tank for fragmented BLE packets
+  final List<int> _rxBuffer = [];
 
   @override
   void initState() {
@@ -75,25 +77,75 @@ class _MainShellState extends State<MainShell> {
   }
 
   // ---------------------------------------------------------------------------
-  // Packet router — 1 Hz unified telemetry
+  // Packet Assembly & Fragmentation Handler — 1 Hz unified telemetry
   // ---------------------------------------------------------------------------
 
   void _onPacket(List<int> data) {
-    if (data.length != 20 || data[0] != 0x7B || data[19] != 0x7D) return;
+    // 1. Add all incoming fragmented bytes to our holding tank
+    _rxBuffer.addAll(data);
 
-    final msgType = MsgType.fromByte(data[1]);
+    // 2. Keep processing as long as we have at least one full 20-byte potential frame
+    while (_rxBuffer.length >= 20) {
+      
+      // Look for the Start Marker '{' (0x7B)
+      final startIndex = _rxBuffer.indexOf(0x7B);
+
+      if (startIndex == -1) {
+        // No start marker found anywhere in the buffer. It's garbage. Clear it.
+        _rxBuffer.clear();
+        return;
+      }
+
+      if (startIndex > 0) {
+        // We found a start marker, but there is garbage data before it. Toss the garbage.
+        _rxBuffer.removeRange(0, startIndex);
+        // If removing the garbage pushed us under 20 bytes, wait for the next BLE transmission.
+        if (_rxBuffer.length < 20) return; 
+      }
+
+      // At this point, _rxBuffer[0] is guaranteed to be 0x7B.
+      // Now, check if the 20th byte (index 19) is our End Marker '}' (0x7D).
+      if (_rxBuffer[19] == 0x7D) {
+        
+        // WE HAVE A PERFECT 20-BYTE FRAME! Extract it.
+        final validFrame = _rxBuffer.sublist(0, 20);
+        
+        // Remove it from the holding tank so we can process the next one
+        _rxBuffer.removeRange(0, 20); 
+
+        // Send the verified frame to the router
+        _routeFrame(validFrame);
+        
+      } else {
+        // We found a 0x7B, but the 20th byte isn't 0x7D. This means the 0x7B we 
+        // found was probably just a random data value, not a real start marker.
+        // Pop the first byte off to shift the buffer and keep searching.
+        _rxBuffer.removeAt(0);
+      }
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Verified Frame Router
+  // ---------------------------------------------------------------------------
+
+  void _routeFrame(List<int> frame) {
+    final msgType = MsgType.fromByte(frame[1]);
+    
     if (msgType == null) {
-      debugPrint('MainShell: unknown packet type 0x${data[1].toRadixString(16)}');
+      debugPrint('MainShell: unknown packet type 0x${frame[1].toRadixString(16)}');
       return;
     }
 
     switch (msgType) {
       case MsgType.unifiedState:
-        context.read<SessionStore>().onUnifiedPacket(data);
+        // Hand the safely assembled 20-byte frame to the Store
+        context.read<SessionStore>().onUnifiedPacket(frame);
       case MsgType.battery:
-        widget.stream?.controllerBattery.add(data);
+        widget.stream?.controllerBattery.add(frame);
       default:
-        debugPrint('MainShell: unhandled packet type ${msgType.name}');
+        // Ignore other types safely
+        break;
     }
   }
 
