@@ -1,103 +1,56 @@
-import 'dart:async';
-import 'models/imu_sample.dart';
-import 'models/light_sample.dart';
-import 'models/mic_sample.dart';
+import 'package:flutter/foundation.dart';
 
-/// In-memory ring buffer used exclusively for live chart display.
-/// sessionId is always 0 here — these samples are never persisted from this class.
-const int kBufferSize = 200;
+class SensorBuffer extends ChangeNotifier {
+  // Number of points visible on the screen (~1.5 seconds at 100Hz)
+  static const int _maxPoints = 150;
 
-class SensorBuffer {
-  final _imu   = _Ring<ImuSample>(kBufferSize);
-  final _light = _Ring<LightSample>(kBufferSize);
-  final _mic   = _Ring<MicSample>(kBufferSize);
+  // --- Metrics Mode Buffers ---
+  final List<double> cadenceHistory = [];
+  final List<double> luxHistory = [];
+  final List<double> blueRatioHistory = [];
 
-  final _imuCtrl   = StreamController<ImuSample>.broadcast();
-  final _lightCtrl = StreamController<LightSample>.broadcast();
-  final _micCtrl   = StreamController<MicSample>.broadcast();
+  // --- Raw IMU Buffers ---
+  final List<double> accelX = [], accelY = [], accelZ = [];
+  final List<double> gyroX = [], gyroY = [], gyroZ = [];
 
-  Stream<ImuSample>   get imuStream   => _imuCtrl.stream;
-  Stream<LightSample> get lightStream => _lightCtrl.stream;
-  Stream<MicSample>   get micStream   => _micCtrl.stream;
+  // --- Raw Spectral Buffers ---
+  final List<double> f1 = [], f2 = [], f3 = [], f4 = [];
+  final List<double> f5 = [], f6 = [], f7 = [], f8 = [];
 
-  List<ImuSample>   get imuSnapshot   => _imu.toList();
-  List<LightSample> get lightSnapshot => _light.toList();
-  List<MicSample>   get micSnapshot   => _mic.toList();
-
-  // ── Accel / Gyro ──────────────────────────────────────────────────────────
-
-  void addAccel(DateTime ts, double x, double y, double z) {
-    final s = ImuSample(
-      sessionId: 0, timestamp: ts, type: 'A', x: x, y: y, z: z);
-    _imu.add(s);
-    _imuCtrl.add(s);
+  void addMetrics({required double cadence, required double lux, required double blueRatio}) {
+    _append(cadenceHistory, cadence);
+    _append(luxHistory, lux);
+    _append(blueRatioHistory, blueRatio);
+    notifyListeners();
   }
 
-  void addGyro(DateTime ts, double x, double y, double z) {
-    final s = ImuSample(
-      sessionId: 0, timestamp: ts, type: 'G', x: x, y: y, z: z);
-    _imu.add(s);
-    _imuCtrl.add(s);
+  void addRawAccel(double x, double y, double z) {
+    _append(accelX, x); _append(accelY, y); _append(accelZ, z);
+    notifyListeners();
   }
 
-  // ── Light ─────────────────────────────────────────────────────────────────
-
-  void addLight(
-    DateTime ts,
-    double uvRisk,
-    double blueLightIntensity,
-    double blueLightRatio,
-    double sunLikeIndex,
-  ) {
-    final s = LightSample(
-      sessionId:          0,
-      timestamp:          ts,
-      uvRisk:             uvRisk,
-      blueLightIntensity: blueLightIntensity,
-      blueLightRatio:     blueLightRatio,
-      sunLikeIndex:       sunLikeIndex,
-      metric1:            0,
-    );
-    _light.add(s);
-    _lightCtrl.add(s);
+  void addRawGyro(double x, double y, double z) {
+    _append(gyroX, x); _append(gyroY, y); _append(gyroZ, z);
+    notifyListeners();
   }
 
-  // ── Mic ───────────────────────────────────────────────────────────────────
-
-  void addMic(DateTime ts, double noiseLevel, double noiseTime) {
-    final s = MicSample(
-      sessionId:  0,
-      timestamp:  ts,
-      noiseLevel: noiseLevel,
-      noiseTime:  noiseTime,
-      metric2:    0,
-    );
-    _mic.add(s);
-    _micCtrl.add(s);
+  void addRawLight(double v1, double v2, double v3, double v4, double v5, double v6, double v7, double v8) {
+    _append(f1, v1); _append(f2, v2); _append(f3, v3); _append(f4, v4);
+    _append(f5, v5); _append(f6, v6); _append(f7, v7); _append(f8, v8);
+    notifyListeners();
   }
 
-  // ── Legacy ingest aliases (used by direct ImuSample/LightSample injection) ─
-
-  void ingestImu(ImuSample s)     { _imu.add(s);   _imuCtrl.add(s); }
-  void ingestLight(LightSample s) { _light.add(s); _lightCtrl.add(s); }
-  void ingestMic(MicSample s)     { _mic.add(s);   _micCtrl.add(s); }
-
-  void dispose() {
-    _imuCtrl.close();
-    _lightCtrl.close();
-    _micCtrl.close();
-  }
-}
-
-class _Ring<T> {
-  final int capacity;
-  final _list = <T>[];
-  _Ring(this.capacity);
-
-  void add(T item) {
-    if (_list.length >= capacity) _list.removeAt(0);
-    _list.add(item);
+  void _append(List<double> list, double value) {
+    list.add(value);
+    if (list.length > _maxPoints) list.removeAt(0);
   }
 
-  List<T> toList() => List.unmodifiable(_list);
+  void clear() {
+    cadenceHistory.clear(); luxHistory.clear(); blueRatioHistory.clear();
+    accelX.clear(); accelY.clear(); accelZ.clear();
+    gyroX.clear(); gyroY.clear(); gyroZ.clear();
+    f1.clear(); f2.clear(); f3.clear(); f4.clear();
+    f5.clear(); f6.clear(); f7.clear(); f8.clear();
+    notifyListeners();
+  }
 }

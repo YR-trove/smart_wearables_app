@@ -1,214 +1,225 @@
-import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:smart_wearables_app/data/sensor_buffer.dart';
-import 'package:smart_wearables_app/data/models/imu_sample.dart';
-import 'package:smart_wearables_app/data/models/light_sample.dart';
-import 'package:smart_wearables_app/data/models/mic_sample.dart';
-import 'package:syncfusion_flutter_charts/charts.dart';
+import 'package:smart_wearables_app/connection/stream.dart';
 
-// ---------------------------------------------------------------------------
-// Chart data point
-// ---------------------------------------------------------------------------
-class ChartData {
-  ChartData(this.x, this.y);
-  final int    x;
-  final double y;
-}
-
-// ---------------------------------------------------------------------------
-// HomePage — Developer Mode live charts
-// Data flows exclusively from SensorBuffer streams.
-// ---------------------------------------------------------------------------
 class HomePage extends StatefulWidget {
-  HomePage({
-    super.key,
-    required this.title,
-    required this.buffer,
-  });
-  final String       title;
+  final String title;
   final SensorBuffer buffer;
+  final MyStream? stream;
+
+  const HomePage({super.key, required this.title, required this.buffer, this.stream});
 
   @override
   State<HomePage> createState() => _HomePageState();
 }
 
 class _HomePageState extends State<HomePage> {
-  StreamSubscription<ImuSample>?   _imuSub;
-  StreamSubscription<LightSample>? _lightSub;
-  StreamSubscription<MicSample>?   _micSub;
+  bool _isRawMode = false;
 
-  // ── IMU — separate series for accel (A) and gyro (G) ─────────────────────
-  List<ChartData> xaData = [], yaData = [], zaData = [];
-  List<ChartData> xgData = [], ygData = [], zgData = [];
-  ChartSeriesController? _xaCtrl, _yaCtrl, _zaCtrl;
-  ChartSeriesController? _xgCtrl, _ygCtrl, _zgCtrl;
-  int _accelCounter = 0;
-  int _gyroCounter  = 0;
-
-  // ── Light ─────────────────────────────────────────────────────────────────
-  List<ChartData> uvData = [], blIntData = [], blRatioData = [], sunData = [];
-  ChartSeriesController? _uvCtrl, _blIntCtrl, _blRatioCtrl, _sunCtrl;
-  int _lightCounter = 0;
-
-  // ── Mic ───────────────────────────────────────────────────────────────────
-  List<ChartData> noiseLvlData = [], noiseTimeData = [];
-  ChartSeriesController? _noiseLvlCtrl, _noiseTimeCtrl;
-  int _micCounter = 0;
-
-  final int maxPts = 200;
-
-  @override
-  void initState() {
-    super.initState();
-    _imuSub   = widget.buffer.imuStream.listen(_onImu);
-    _lightSub = widget.buffer.lightStream.listen(_onLight);
-    _micSub   = widget.buffer.micStream.listen(_onMic);
+  void _toggleMode() {
+    setState(() => _isRawMode = !_isRawMode);
+    widget.stream?.setMcuMode(_isRawMode);
+    widget.buffer.clear(); 
   }
-
-  // ── Stream handlers ───────────────────────────────────────────────────────
-
-  void _onImu(ImuSample s) {
-    if (s.type == 'A') {
-      _append(xaData, _accelCounter, s.x);
-      _append(yaData, _accelCounter, s.y);
-      _append(zaData, _accelCounter, s.z);
-      _accelCounter++;
-      _updateCtrl(_xaCtrl, xaData);
-      _updateCtrl(_yaCtrl, yaData);
-      _updateCtrl(_zaCtrl, zaData);
-    } else {
-      _append(xgData, _gyroCounter, s.x);
-      _append(ygData, _gyroCounter, s.y);
-      _append(zgData, _gyroCounter, s.z);
-      _gyroCounter++;
-      _updateCtrl(_xgCtrl, xgData);
-      _updateCtrl(_ygCtrl, ygData);
-      _updateCtrl(_zgCtrl, zgData);
-    }
-  }
-
-  void _onLight(LightSample s) {
-    _append(uvData,      _lightCounter, s.uvRisk);
-    _append(blIntData,   _lightCounter, s.blueLightIntensity);
-    _append(blRatioData, _lightCounter, s.blueLightRatio);
-    _append(sunData,     _lightCounter, s.sunLikeIndex);
-    _lightCounter++;
-    _updateCtrl(_uvCtrl,      uvData);
-    _updateCtrl(_blIntCtrl,   blIntData);
-    _updateCtrl(_blRatioCtrl, blRatioData);
-    _updateCtrl(_sunCtrl,     sunData);
-  }
-
-  void _onMic(MicSample s) {
-    _append(noiseLvlData,  _micCounter, s.noiseLevel);
-    _append(noiseTimeData, _micCounter, s.noiseTime);
-    _micCounter++;
-    _updateCtrl(_noiseLvlCtrl,  noiseLvlData);
-    _updateCtrl(_noiseTimeCtrl, noiseTimeData);
-  }
-
-  void _append(List<ChartData> list, int x, double y) {
-    list.add(ChartData(x, y));
-    if (list.length > maxPts) list.removeAt(0);
-  }
-
-  void _updateCtrl(ChartSeriesController? ctrl, List<ChartData> data) {
-    ctrl?.updateDataSource(
-      addedDataIndexes: [data.length - 1],
-      removedDataIndexes: data.length == maxPts ? [0] : null,
-    );
-  }
-
-  @override
-  void dispose() {
-    _imuSub?.cancel();
-    _lightSub?.cancel();
-    _micSub?.cancel();
-    super.dispose();
-  }
-
-  // ── Build ─────────────────────────────────────────────────────────────────
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+
     return Scaffold(
+      backgroundColor: theme.scaffoldBackgroundColor,
       appBar: AppBar(
-        title: Text(widget.title),
-        backgroundColor: Theme.of(context).colorScheme.inversePrimary,
+        backgroundColor: theme.scaffoldBackgroundColor,
+        title: Text('Developer Dashboard', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600, color: theme.colorScheme.onSurface)),
+        centerTitle: true,
       ),
-      body: ListView(
-        children: [
-          _sectionHeader('Accelerometer (g)'),
-          _buildChart('X',  xaData, Colors.red,    (c) => _xaCtrl = c, min: -3,   max: 3),
-          _buildChart('Y',  yaData, Colors.green,  (c) => _yaCtrl = c, min: -3,   max: 3),
-          _buildChart('Z',  zaData, Colors.blue,   (c) => _zaCtrl = c, min: -3,   max: 3),
-
-          _sectionHeader('Gyroscope (°/s)'),
-          _buildChart('X',  xgData, Colors.orange, (c) => _xgCtrl = c, min: -180, max: 180),
-          _buildChart('Y',  ygData, Colors.purple, (c) => _ygCtrl = c, min: -180, max: 180),
-          _buildChart('Z',  zgData, Colors.yellow, (c) => _zgCtrl = c, min: -180, max: 180),
-
-          _sectionHeader('Light Sensor'),
-          _buildChart('UV Risk (0–1)',           uvData,      Colors.orange,    (c) => _uvCtrl = c,      min: 0, max: 1),
-          _buildChart('Blue-Light Intensity',   blIntData,   Colors.blue,      (c) => _blIntCtrl = c,   min: 0, max: 4096),
-          _buildChart('Blue-Light Ratio (0–1)', blRatioData, Colors.lightBlue, (c) => _blRatioCtrl = c, min: 0, max: 1),
-          _buildChart('Sun-Like Index (0–1)',   sunData,     Colors.amber,     (c) => _sunCtrl = c,     min: 0, max: 1),
-
-          _sectionHeader('Microphone'),
-          _buildChart('Noise Level (dB)', noiseLvlData,  Colors.red,    (c) => _noiseLvlCtrl = c,  min: 30,  max: 120),
-          _buildChart('Noise Time (s)',   noiseTimeData, Colors.purple, (c) => _noiseTimeCtrl = c, min: 0,   max: 28800),
-        ],
+      body: AnimatedBuilder(
+        animation: widget.buffer, 
+        builder: (context, _) {
+          return ListView(
+            padding: const EdgeInsets.all(16),
+            children: _isRawMode ? _buildRawCharts(isDark) : _buildMetricsCharts(isDark),
+          );
+        },
+      ),
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: _toggleMode,
+        icon: Icon(_isRawMode ? Icons.analytics : Icons.speed),
+        label: Text(_isRawMode ? 'Switch to Metrics' : 'Switch to Raw Data'),
+        backgroundColor: _isRawMode ? const Color(0xFFEF4444) : theme.colorScheme.primary,
+        foregroundColor: Colors.white,
       ),
     );
   }
 
-  Widget _sectionHeader(String label) => Padding(
-    padding: const EdgeInsets.fromLTRB(16, 20, 16, 4),
-    child: Text(label,
-      style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-  );
+  // --- View 1: Unified Metrics ---
+  List<Widget> _buildMetricsCharts(bool isDark) {
+    return [
+      _ChartCard(title: 'Step Cadence', multiData: [widget.buffer.cadenceHistory], colors: [const Color(0xFF10B981)], isDark: isDark),
+      const SizedBox(height: 16),
+      _ChartCard(title: 'Illuminance Proxy', multiData: [widget.buffer.luxHistory], colors: [const Color(0xFFFFCA28)], isDark: isDark),
+      const SizedBox(height: 16),
+      _ChartCard(title: 'Blue Light Ratio', multiData: [widget.buffer.blueRatioHistory], colors: [const Color(0xFF3B82F6)], isDark: isDark),
+    ];
+  }
 
-  Widget _buildChart(
-    String title,
-    List<ChartData> data,
-    Color color,
-    void Function(ChartSeriesController) onCreated, {
-    required double min,
-    required double max,
-  }) {
+  // --- View 2: Multi-Axis & Spectral Raw Data ---
+  List<Widget> _buildRawCharts(bool isDark) {
+    return [
+      _ChartCard(
+        title: 'Accelerometer (X=Red, Y=Green, Z=Blue)',
+        multiData: [widget.buffer.accelX, widget.buffer.accelY, widget.buffer.accelZ],
+        colors: [const Color(0xFFEF4444), const Color(0xFF10B981), const Color(0xFF3B82F6)],
+        isDark: isDark,
+      ),
+      const SizedBox(height: 16),
+      _ChartCard(
+        title: 'Gyroscope (X=Red, Y=Green, Z=Blue)',
+        multiData: [widget.buffer.gyroX, widget.buffer.gyroY, widget.buffer.gyroZ],
+        colors: [const Color(0xFFEF4444), const Color(0xFF10B981), const Color(0xFF3B82F6)],
+        isDark: isDark,
+      ),
+      const SizedBox(height: 16),
+      _ChartCard(title: 'F1 - Violet (415nm)', multiData: [widget.buffer.f1], colors: [const Color(0xFF8B5CF6)], isDark: isDark),
+      const SizedBox(height: 12),
+      _ChartCard(title: 'F2 - Deep Blue (445nm)', multiData: [widget.buffer.f2], colors: [const Color(0xFF2563EB)], isDark: isDark),
+      const SizedBox(height: 12),
+      _ChartCard(title: 'F3 - Cyan (480nm)', multiData: [widget.buffer.f3], colors: [const Color(0xFF06B6D4)], isDark: isDark),
+      const SizedBox(height: 12),
+      _ChartCard(title: 'F4 - Teal/Green (515nm)', multiData: [widget.buffer.f4], colors: [const Color(0xFF10B981)], isDark: isDark),
+      const SizedBox(height: 12),
+      _ChartCard(title: 'F5 - Lime (555nm)', multiData: [widget.buffer.f5], colors: [const Color(0xFF84CC16)], isDark: isDark),
+      const SizedBox(height: 12),
+      _ChartCard(title: 'F6 - Amber (590nm)', multiData: [widget.buffer.f6], colors: [const Color(0xFFF59E0B)], isDark: isDark),
+      const SizedBox(height: 12),
+      _ChartCard(title: 'F7 - Red (630nm)', multiData: [widget.buffer.f7], colors: [const Color(0xFFEF4444)], isDark: isDark),
+      const SizedBox(height: 12),
+      _ChartCard(title: 'F8 - Deep Red (680nm)', multiData: [widget.buffer.f8], colors: [const Color(0xFF991B1B)], isDark: isDark),
+      const SizedBox(height: 80), // Padding for the floating button
+    ];
+  }
+}
+
+// ============================================================================
+// High-Performance Multi-Line Custom Painter
+// ============================================================================
+
+class _ChartCard extends StatelessWidget {
+  final String title;
+  final List<List<double>> multiData;
+  final List<Color> colors;
+  final bool isDark;
+
+  const _ChartCard({required this.title, required this.multiData, required this.colors, required this.isDark});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
     return Container(
-      height: 220,
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      height: 180,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: isDark ? const Color(0xFF1A1A1A) : Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: theme.dividerColor.withValues(alpha: 0.1)),
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Padding(
-            padding: const EdgeInsets.only(left: 8),
-            child: Text(title,
-              style: const TextStyle(fontWeight: FontWeight.w600)),
-          ),
+          Text(title, style: TextStyle(color: theme.colorScheme.onSurfaceVariant, fontSize: 13, fontWeight: FontWeight.w600)),
+          const SizedBox(height: 12),
           Expanded(
-            child: SfCartesianChart(
-              primaryXAxis: NumericAxis(
-                autoScrollingMode: AutoScrollingMode.end,
-                autoScrollingDelta: maxPts,
-                isVisible: false,
-              ),
-              primaryYAxis: NumericAxis(minimum: min, maximum: max),
-              series: <LineSeries<ChartData, int>>[
-                LineSeries<ChartData, int>(
-                  onRendererCreated: onCreated,
-                  dataSource: data,
-                  xValueMapper: (d, _) => d.x,
-                  yValueMapper: (d, _) => d.y,
-                  color: color,
-                  animationDuration: 0,
+            child: ClipRect(
+              child: CustomPaint(
+                size: Size.infinite,
+                painter: _MultiOscilloscopePainter(
+                  multiData: multiData,
+                  colors: colors,
+                  gridColor: theme.dividerColor.withValues(alpha: 0.1),
                 ),
-              ],
+              ),
             ),
           ),
         ],
       ),
     );
   }
+}
+
+class _MultiOscilloscopePainter extends CustomPainter {
+  final List<List<double>> multiData;
+  final List<Color> colors;
+  final Color gridColor;
+
+  _MultiOscilloscopePainter({required this.multiData, required this.colors, required this.gridColor});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    // 1. Draw Grid
+    final gridPaint = Paint()..color = gridColor..strokeWidth = 1..style = PaintingStyle.stroke;
+    for (int i = 0; i < 5; i++) {
+      final y = size.height * (i / 4);
+      canvas.drawLine(Offset(0, y), Offset(size.width, y), gridPaint);
+    }
+
+    if (multiData.isEmpty || multiData[0].isEmpty) return;
+
+    // 2. Find global min and max across all lines for unified scaling
+    double maxVal = -double.infinity;
+    double minVal = double.infinity;
+    
+    for (var series in multiData) {
+      if (series.isEmpty) continue;
+      final sMax = series.reduce((a, b) => a > b ? a : b);
+      final sMin = series.reduce((a, b) => a < b ? a : b);
+      if (sMax > maxVal) maxVal = sMax;
+      if (sMin < minVal) minVal = sMin;
+    }
+
+    // Add 10% padding so peaks don't hit the ceiling/floor of the box
+    if (maxVal == minVal) {
+      maxVal += 1; minVal -= 1;
+    } else {
+      final padding = (maxVal - minVal) * 0.1;
+      maxVal += padding;
+      minVal -= padding;
+    }
+    
+    final range = maxVal - minVal;
+    final stepX = size.width / (multiData[0].length > 1 ? multiData[0].length - 1 : 1);
+
+    // 3. Draw each line
+    for (int lineIdx = 0; lineIdx < multiData.length; lineIdx++) {
+      final data = multiData[lineIdx];
+      if (data.isEmpty) continue;
+
+      final path = Path();
+      for (int i = 0; i < data.length; i++) {
+        final x = i * stepX;
+        final normalizedY = (data[i] - minVal) / range;
+        final y = size.height - (normalizedY * size.height);
+        
+        if (i == 0) 
+        {
+          path.moveTo(x, y);
+        }
+        else 
+        {
+          path.lineTo(x, y);
+        }
+      }
+
+      final linePaint = Paint()
+        ..color = colors[lineIdx % colors.length]
+        ..strokeWidth = 2.0
+        ..style = PaintingStyle.stroke
+        ..strokeJoin = StrokeJoin.round;
+
+      canvas.drawPath(path, linePaint);
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _MultiOscilloscopePainter oldDelegate) => true;
 }
