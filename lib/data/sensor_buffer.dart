@@ -40,7 +40,8 @@ class SensorBuffer extends ChangeNotifier {
     _append(blueIntensityHistory, blueIntensity);
     _append(blueRatioHistory, blueRatio);
     _append(sunLikeHistory, sunLike);
-    notifyListeners();
+    debugPrint('Buffer: Added new point. Total points: ${cadenceHistory.length}');
+    notifyListeners(); // This is the trigger for the UI to redraw
   }
 
   void addRawAccel(double x, double y, double z) {

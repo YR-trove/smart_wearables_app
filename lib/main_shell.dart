@@ -119,6 +119,9 @@ class _MainShellState extends State<MainShell> {
     switch (msgType) {
       case MsgType.unifiedState: // 0x55
         context.read<SessionStore>().onUnifiedPacket(frame);
+
+        debugPrint('MainShell: Got 0x55 packet! Cadence: ${frame[4]}');
+        
         final bd = ByteData.sublistView(Uint8List.fromList(frame));
         final steps        = bd.getUint16(2, Endian.little).toDouble(); // NEW
         final cadence      = frame[4].toDouble();
