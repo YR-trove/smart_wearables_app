@@ -1,352 +1,451 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:smart_wearables_app/app_theme.dart';
 import 'package:smart_wearables_app/data/session_store.dart';
 
-/// Light / Photobiology dashboard — driven entirely by [SessionStore]
-/// accumulators updated on every 1 Hz AS7341 packet.
-///
-/// Displays:
-///   • UV index card (live Q15-scaled value)
-///   • Sunlight exposure arc gauge (accumulated seconds)
-///   • Skin burn risk badge (Low / Moderate / High)
-///   • Nighttime blue light exposure bar
-///   • Circadian score ring gauge (starts at 100, deducted over time)
+// ---------------------------------------------------------------------------
+// LightPage
+//
+// Displays photobiology metrics derived from the AS7341 spectral sensor.
+// All computation lives in SessionStore._processLightMetrics();
+// this widget only reads and visualises the results.
+// ---------------------------------------------------------------------------
 class LightPage extends StatelessWidget {
   const LightPage({super.key});
 
-  // ─── Colour helpers ──────────────────────────────────────────────────────────
+  // ── Helpers ─────────────────────────────────────────────────────────────
 
-  Color _uvColor(double idx) {
-    if (idx >= 8) return AppColors.danger;
-    if (idx >= 6) return AppColors.warning;
-    if (idx >= 3) return const Color(0xFFF59E0B);
-    return AppColors.success;
+  String _formatSeconds(int s) {
+    if (s < 60) return '${s}s';
+    final m = s ~/ 60;
+    final rem = s % 60;
+    return '${m}m ${rem}s';
   }
 
-  String _uvLabel(double idx) {
-    if (idx >= 8) return 'Very High';
-    if (idx >= 6) return 'High';
-    if (idx >= 3) return 'Moderate';
-    return 'Low';
+  Color _riskColor(String risk) {
+    switch (risk) {
+      case 'High':
+        return const Color(0xFFEF5350);
+      case 'Moderate':
+        return const Color(0xFFFF9800);
+      default:
+        return const Color(0xFF66BB6A);
+    }
   }
 
-  Color _burnRiskColor(String risk) => switch (risk) {
-    'High'     => AppColors.danger,
-    'Moderate' => AppColors.warning,
-    _          => AppColors.success,
-  };
-
-  Color _blueRatioColor(double ratio) {
-    if (ratio > 0.5) return AppColors.danger;
-    if (ratio > 0.35) return AppColors.warning;
-    return AppColors.success;
+  Color _exposureColor(String level) {
+    switch (level) {
+      case 'High':
+        return const Color(0xFFEF5350);
+      case 'Moderate':
+        return const Color(0xFFFF9800);
+      default:
+        return const Color(0xFF26C6DA);
+    }
   }
 
-  // ─── Build ───────────────────────────────────────────────────────────────────
+  // ── Build ────────────────────────────────────────────────────────────────
 
   @override
   Widget build(BuildContext context) {
     final store = context.watch<SessionStore>();
-    final bool  live = store.activeSession != null;
 
     return Scaffold(
-      backgroundColor: AppColors.background,
+      backgroundColor: const Color(0xFF121212),
       appBar: AppBar(
-        backgroundColor: AppColors.background,
+        backgroundColor: const Color(0xFF1A1A1A),
         elevation: 0,
-        title: const Text('Light & Environment',
-            style: TextStyle(fontWeight: FontWeight.w600, fontSize: 20)),
-        actions: [
-          Padding(
-            padding: const EdgeInsets.only(right: 16),
-            child: Chip(
-              label: Text(live ? 'Live' : 'No Session',
-                  style: const TextStyle(fontSize: 12, color: Colors.white)),
-              backgroundColor: live ? AppColors.success : AppColors.inactive,
-              padding: EdgeInsets.zero,
-            ),
-          )
-        ],
+        title: const Text(
+          'Light Environment',
+          style: TextStyle(
+            color: Colors.white,
+            fontWeight: FontWeight.w600,
+            fontSize: 20,
+          ),
+        ),
       ),
-      body: live
-          ? _buildLiveDashboard(store)
-          : _buildNoSession(context),
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            // ── Circadian score hero card ──
+            _CircadianScoreCard(score: store.circadianScore),
+
+            const SizedBox(height: 12),
+
+            // ── Sunlight exposure card ──
+            _LightCard(
+              icon: Icons.wb_sunny_rounded,
+              iconColor: const Color(0xFFFFCA28),
+              title: 'Sunlight Exposure',
+              children: [
+                _MetricRow(
+                  label: 'Total Time',
+                  value: _formatSeconds(store.sunlightSeconds),
+                  valueColor: Colors.white,
+                ),
+                const SizedBox(height: 8),
+                _MetricRow(
+                  label: 'UV Index',
+                  value: store.currentUvIndex.toStringAsFixed(1),
+                  valueColor: Colors.white,
+                ),
+                const SizedBox(height: 8),
+                _MetricRow(
+                  label: 'Skin Burn Risk',
+                  value: store.skinBurnRisk,
+                  valueColor: _riskColor(store.skinBurnRisk),
+                ),
+                const SizedBox(height: 12),
+                // Sunlight progress bar (goal: 20 min = 1200 s for vitamin D)
+                _ExposureBar(
+                  seconds: store.sunlightSeconds,
+                  goalSeconds: 1200,
+                  color: const Color(0xFFFFCA28),
+                  goalLabel: '20 min recommended daily',
+                ),
+              ],
+            ),
+
+            const SizedBox(height: 12),
+
+            // ── Night blue-light exposure card ──
+            _LightCard(
+              icon: Icons.nights_stay_rounded,
+              iconColor: const Color(0xFF5C6BC0),
+              title: 'Night Blue Light',
+              children: [
+                _MetricRow(
+                  label: 'Exposure (after 19:00)',
+                  value: _formatSeconds(store.nightBlueLightSeconds),
+                  valueColor: Colors.white,
+                ),
+                const SizedBox(height: 8),
+                _MetricRow(
+                  label: 'Level',
+                  value: store.blueLightExposureLevel,
+                  valueColor: _exposureColor(store.blueLightExposureLevel),
+                ),
+                const SizedBox(height: 12),
+                // Blue-light bar (3600 s = High threshold)
+                _ExposureBar(
+                  seconds: store.nightBlueLightSeconds,
+                  goalSeconds: 3600,
+                  color: const Color(0xFF5C6BC0),
+                  goalLabel: 'Keep below 60 min for healthy sleep',
+                ),
+              ],
+            ),
+
+            const SizedBox(height: 12),
+
+            // ── UV index gauge card ──
+            _LightCard(
+              icon: Icons.thermostat_rounded,
+              iconColor: const Color(0xFFEF5350),
+              title: 'Current UV Index',
+              children: [
+                _UvGauge(uvIndex: store.currentUvIndex),
+              ],
+            ),
+          ],
+        ),
+      ),
     );
   }
+}
 
-  // ─── No-session empty state ──────────────────────────────────────────────────
+// ============================================================================
+// Sub-widgets
+// ============================================================================
 
-  Widget _buildNoSession(BuildContext context) => Center(
-    child: Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Icon(Icons.wb_sunny_outlined, size: 56, color: AppColors.inactive),
-        const SizedBox(height: 16),
-        Text('No active session',
-            style: TextStyle(fontSize: 16, color: AppColors.muted)),
-        const SizedBox(height: 8),
-        Text('Connect a device to monitor light exposure.',
-            style: TextStyle(fontSize: 14, color: AppColors.inactive)),
-      ],
-    ),
-  );
+class _LightCard extends StatelessWidget {
+  final IconData icon;
+  final Color iconColor;
+  final String title;
+  final List<Widget> children;
 
-  // ─── Live dashboard ──────────────────────────────────────────────────────────
+  const _LightCard({
+    required this.icon,
+    required this.iconColor,
+    required this.title,
+    required this.children,
+  });
 
-  Widget _buildLiveDashboard(SessionStore store) {
-    return SingleChildScrollView(
+  @override
+  Widget build(BuildContext context) {
+    return Container(
       padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: const Color(0xFF1E1E1E),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: Colors.white.withOpacity(0.06)),
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _buildUvCard(store),
-          const SizedBox(height: 12),
-          _buildSunlightCard(store),
-          const SizedBox(height: 12),
-          _buildBlueLightCard(store),
-          const SizedBox(height: 12),
-          _buildCircadianCard(store),
+          Row(
+            children: [
+              Icon(icon, color: iconColor, size: 20),
+              const SizedBox(width: 8),
+              Text(title,
+                  style: const TextStyle(
+                      color: Colors.white70,
+                      fontSize: 14,
+                      fontWeight: FontWeight.w500)),
+            ],
+          ),
+          const SizedBox(height: 14),
+          ...children,
         ],
       ),
     );
   }
+}
 
-  // ─── UV index card ────────────────────────────────────────────────────────────
+class _MetricRow extends StatelessWidget {
+  final String label;
+  final String value;
+  final Color valueColor;
 
-  Widget _buildUvCard(SessionStore store) {
-    final uv    = store.currentUvIndex;
-    final color = _uvColor(uv);
-    return AppCard(
-      leftBorderColor: color,
-      child: Row(
-        children: [
-          Container(
-            width: 52,
-            height: 52,
-            decoration: BoxDecoration(
-              color: color.withOpacity(0.12),
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Icon(Icons.wb_sunny, color: color, size: 28),
+  const _MetricRow({
+    required this.label,
+    required this.value,
+    required this.valueColor,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        Text(label,
+            style:
+                const TextStyle(color: Colors.white38, fontSize: 13)),
+        Text(value,
+            style: TextStyle(
+                color: valueColor,
+                fontSize: 14,
+                fontWeight: FontWeight.w600)),
+      ],
+    );
+  }
+}
+
+class _ExposureBar extends StatelessWidget {
+  final int seconds;
+  final int goalSeconds;
+  final Color color;
+  final String goalLabel;
+
+  const _ExposureBar({
+    required this.seconds,
+    required this.goalSeconds,
+    required this.color,
+    required this.goalLabel,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final progress = (seconds / goalSeconds).clamp(0.0, 1.0);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.end,
+      children: [
+        ClipRRect(
+          borderRadius: BorderRadius.circular(6),
+          child: LinearProgressIndicator(
+            value: progress,
+            minHeight: 8,
+            backgroundColor: Colors.white12,
+            valueColor: AlwaysStoppedAnimation<Color>(color),
           ),
-          const SizedBox(width: 14),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+        ),
+        const SizedBox(height: 4),
+        Text(
+          goalLabel,
+          style: const TextStyle(color: Colors.white30, fontSize: 11),
+        ),
+      ],
+    );
+  }
+}
+
+/// Large circular score widget for the circadian rhythm score (0–100).
+class _CircadianScoreCard extends StatelessWidget {
+  final int score;
+  const _CircadianScoreCard({required this.score});
+
+  Color get _scoreColor {
+    if (score >= 80) return const Color(0xFF66BB6A);
+    if (score >= 50) return const Color(0xFFFF9800);
+    return const Color(0xFFEF5350);
+  }
+
+  String get _scoreLabel {
+    if (score >= 80) return 'Healthy';
+    if (score >= 50) return 'Disrupted';
+    return 'Poor';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: const Color(0xFF1E1E1E),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: Colors.white.withOpacity(0.06)),
+      ),
+      child: Column(
+        children: [
+          const Text(
+            'Circadian Rhythm Score',
+            style: TextStyle(color: Colors.white70, fontSize: 14),
+          ),
+          const SizedBox(height: 16),
+          SizedBox(
+            width: 140,
+            height: 140,
+            child: Stack(
+              alignment: Alignment.center,
               children: [
-                Text('UV Index',
-                    style: TextStyle(fontSize: 12, color: AppColors.muted)),
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.end,
+                CircularProgressIndicator(
+                  value: score / 100.0,
+                  strokeWidth: 10,
+                  backgroundColor: Colors.white12,
+                  valueColor: AlwaysStoppedAnimation<Color>(_scoreColor),
+                  strokeCap: StrokeCap.round,
+                ),
+                Column(
+                  mainAxisSize: MainAxisSize.min,
                   children: [
-                    Text(uv.toStringAsFixed(1),
-                        style: TextStyle(
-                            fontSize: 32,
-                            fontWeight: FontWeight.w700,
-                            color: color)),
-                    const SizedBox(width: 8),
-                    Padding(
-                      padding: const EdgeInsets.only(bottom: 4),
-                      child: Text(_uvLabel(uv),
-                          style: TextStyle(fontSize: 14, color: color)),
+                    Text(
+                      '$score',
+                      style: TextStyle(
+                        color: _scoreColor,
+                        fontSize: 38,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    Text(
+                      _scoreLabel,
+                      style: const TextStyle(
+                          color: Colors.white54, fontSize: 12),
                     ),
                   ],
                 ),
               ],
             ),
           ),
-          _burnRiskBadge(store.skinBurnRisk),
-        ],
-      ),
-    );
-  }
-
-  Widget _burnRiskBadge(String risk) {
-    final color = _burnRiskColor(risk);
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-      decoration: BoxDecoration(
-        color: color.withOpacity(0.12),
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: color.withOpacity(0.4)),
-      ),
-      child: Text('Burn: $risk',
-          style: TextStyle(
-              fontSize: 11, fontWeight: FontWeight.w600, color: color)),
-    );
-  }
-
-  // ─── Sunlight exposure card ───────────────────────────────────────────────────
-
-  Widget _buildSunlightCard(SessionStore store) {
-    final secs  = store.sunlightSeconds;
-    final mins  = secs ~/ 60;
-    // Recommended 20-30 min of sunlight; cap ring at 60 min.
-    final prog  = (secs / 1800.0).clamp(0.0, 1.0);
-    return AppCard(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          SectionLabel(text: 'SUNLIGHT EXPOSURE'),
-          const SizedBox(height: 12),
-          Row(
-            children: [
-              RingGauge(
-                value:       prog,
-                color:       AppColors.warning,
-                size:        80,
-                strokeWidth: 9,
-              ),
-              const SizedBox(width: 20),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text('$mins min',
-                        style: const TextStyle(
-                            fontSize: 26, fontWeight: FontWeight.w700)),
-                    Text('of broad-spectrum light today',
-                        style: TextStyle(
-                            fontSize: 12, color: AppColors.muted)),
-                    const SizedBox(height: 6),
-                    AppProgressBar(
-                        value: prog, color: AppColors.warning),
-                    const SizedBox(height: 4),
-                    Text('Goal: 30 min',
-                        style: TextStyle(
-                            fontSize: 11, color: AppColors.inactive)),
-                  ],
-                ),
-              ),
-            ],
+          const SizedBox(height: 10),
+          const Text(
+            'Score resets to 100 each morning. Deducted by night-time blue light after 19:00.',
+            textAlign: TextAlign.center,
+            style: TextStyle(color: Colors.white30, fontSize: 11),
           ),
         ],
       ),
     );
   }
+}
 
-  // ─── Blue light / night exposure card ────────────────────────────────────────
+/// A horizontal UV-index scale bar with a moving needle indicator.
+class _UvGauge extends StatelessWidget {
+  final double uvIndex;
+  const _UvGauge({required this.uvIndex});
 
-  Widget _buildBlueLightCard(SessionStore store) {
-    final nightSecs  = store.nightBlueLightSeconds;
-    final nightMins  = nightSecs ~/ 60;
-    final ratio      = store.currentBlueRatio;
-    final riskProg   = (nightSecs / 3600.0).clamp(0.0, 1.0);
-    final riskLabel  = nightSecs < 1800 ? 'Low'
-                     : nightSecs < 3600 ? 'Moderate'
-                     : 'High';
-    final riskColor  = _burnRiskColor(riskLabel);
+  String get _uvLabel {
+    if (uvIndex < 3) return 'Low';
+    if (uvIndex < 6) return 'Moderate';
+    if (uvIndex < 8) return 'High';
+    if (uvIndex < 11) return 'Very High';
+    return 'Extreme';
+  }
 
-    return AppCard(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          SectionLabel(text: 'BLUE LIGHT (NIGHT)'),
-          const SizedBox(height: 12),
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text('$nightMins min exposure',
-                        style: const TextStyle(
-                            fontSize: 20, fontWeight: FontWeight.w700)),
-                    Text('after 19:00 · ratio > 0.35 threshold',
-                        style: TextStyle(
-                            fontSize: 11, color: AppColors.muted)),
-                    const SizedBox(height: 10),
-                    AppProgressBar(value: riskProg, color: riskColor),
-                    const SizedBox(height: 4),
-                    Text('Risk level: $riskLabel',
-                        style: TextStyle(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w600,
-                            color: riskColor)),
-                  ],
-                ),
+  Color get _uvColor {
+    if (uvIndex < 3) return const Color(0xFF66BB6A);
+    if (uvIndex < 6) return const Color(0xFFFFCA28);
+    if (uvIndex < 8) return const Color(0xFFFF9800);
+    if (uvIndex < 11) return const Color(0xFFEF5350);
+    return const Color(0xFFAB47BC);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final fraction = (uvIndex / 11.0).clamp(0.0, 1.0);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text(
+              uvIndex.toStringAsFixed(1),
+              style: TextStyle(
+                color: _uvColor,
+                fontSize: 36,
+                fontWeight: FontWeight.bold,
               ),
-              const SizedBox(width: 16),
-              Column(
-                children: [
-                  Text('Live ratio',
-                      style: TextStyle(
-                          fontSize: 11, color: AppColors.muted)),
-                  const SizedBox(height: 6),
-                  RingGauge(
-                    value:       ratio.clamp(0.0, 1.0),
-                    color:       _blueRatioColor(ratio),
-                    size:        64,
-                    strokeWidth: 7,
-                  ),
-                  const SizedBox(height: 4),
-                  Text('${(ratio * 100).toStringAsFixed(0)}%',
-                      style: TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w600,
-                          color: _blueRatioColor(ratio))),
+            ),
+            Container(
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+              decoration: BoxDecoration(
+                color: _uvColor.withOpacity(0.15),
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(color: _uvColor.withOpacity(0.4)),
+              ),
+              child: Text(
+                _uvLabel,
+                style: TextStyle(
+                    color: _uvColor,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        // Gradient scale bar
+        ClipRRect(
+          borderRadius: BorderRadius.circular(6),
+          child: Container(
+            height: 10,
+            decoration: const BoxDecoration(
+              gradient: LinearGradient(
+                colors: [
+                  Color(0xFF66BB6A), // Low
+                  Color(0xFFFFCA28), // Moderate
+                  Color(0xFFFF9800), // High
+                  Color(0xFFEF5350), // Very High
+                  Color(0xFFAB47BC), // Extreme
                 ],
               ),
-            ],
+            ),
           ),
-        ],
-      ),
-    );
-  }
-
-  // ─── Circadian score card ─────────────────────────────────────────────────────
-
-  Widget _buildCircadianCard(SessionStore store) {
-    final score = store.circadianScore;
-    final prog  = (score / 100.0).clamp(0.0, 1.0);
-    final color = score >= 80 ? AppColors.success
-                : score >= 50 ? AppColors.warning
-                : AppColors.danger;
-    return AppCard(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          SectionLabel(text: 'CIRCADIAN RHYTHM SCORE'),
-          const SizedBox(height: 12),
-          Row(
-            children: [
-              RingGauge(
-                  value: prog, color: color, size: 90, strokeWidth: 10),
-              const SizedBox(width: 20),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text('$score / 100',
-                        style: TextStyle(
-                            fontSize: 28,
-                            fontWeight: FontWeight.w700,
-                            color: color)),
-                    const SizedBox(height: 6),
-                    Text(
-                      score >= 80
-                          ? 'Great — minimal circadian disruption.'
-                          : score >= 50
-                              ? 'Moderate — reduce screen time after 19:00.'
-                              : 'High disruption — consider blue-light glasses.',
-                      style: TextStyle(
-                          fontSize: 12, color: AppColors.muted),
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      'Night blue-light: ${store.nightBlueLightSeconds ~/ 60} min',
-                      style: TextStyle(
-                          fontSize: 11, color: AppColors.inactive),
-                    ),
-                  ],
-                ),
-              ),
-            ],
+        ),
+        const SizedBox(height: 4),
+        // Needle
+        FractionallySizedBox(
+          widthFactor: fraction,
+          alignment: Alignment.centerLeft,
+          child: const Align(
+            alignment: Alignment.centerRight,
+            child: Icon(Icons.arrow_drop_up_rounded,
+                color: Colors.white70, size: 18),
           ),
-        ],
-      ),
+        ),
+        const SizedBox(height: 2),
+        const Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text('0', style: TextStyle(color: Colors.white30, fontSize: 10)),
+            Text('5', style: TextStyle(color: Colors.white30, fontSize: 10)),
+            Text('11+',
+                style: TextStyle(color: Colors.white30, fontSize: 10)),
+          ],
+        ),
+      ],
     );
   }
 }
