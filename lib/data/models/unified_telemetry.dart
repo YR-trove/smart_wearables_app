@@ -24,7 +24,7 @@ class UnifiedTelemetry {
   /// Blue light fraction of total spectrum, Q15 → float in [0.0, 1.0].
   final double blueLightRatio;
   /// Indoor/outdoor light quality index, Q15 → float in [0.0, 1.0].
-  final double sunLikeIndex;
+  final double colorTemp;
   /// AS7341 Clear channel — overall illuminance proxy (raw counts).
   final int    clearChannel;
 
@@ -38,7 +38,7 @@ class UnifiedTelemetry {
     required this.uvRisk,
     required this.blueLightIntensity,
     required this.blueLightRatio,
-    required this.sunLikeIndex,
+    required this.colorTemp,
     required this.clearChannel,
   });
 
@@ -52,7 +52,7 @@ class UnifiedTelemetry {
     'uv_risk':              uvRisk,
     'blue_light_intensity': blueLightIntensity,
     'blue_light_ratio':     blueLightRatio,
-    'sun_like_index':       sunLikeIndex,
+    'color_temp':           colorTemp,
     'clear_channel':        clearChannel,
   };
 

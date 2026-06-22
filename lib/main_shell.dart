@@ -28,16 +28,14 @@ class MainShell extends StatefulWidget {
   State<MainShell> createState() => _MainShellState();
 }
 
-// FIX 1: Added the underscore back to _MainShellState
 class _MainShellState extends State<MainShell> {
   StreamSubscription<List<int>>? _sub;
+  StreamSubscription<List<int>>? _devSub; // Separate high-speed subscription
   
-  // Since devMode defaults to false, index 0 will now point to the Fitness Page!
   int _pageIndex = 0;
   bool _devMode = false;
 
   final SensorBuffer _sensorBuffer = SensorBuffer();
-  // The holding tank for fragmented BLE packets
   final List<int> _rxBuffer = [];
 
   @override
@@ -46,12 +44,16 @@ class _MainShellState extends State<MainShell> {
     if (widget.stream != null && widget.deviceId != null) {
       _startSession();
       _sub = widget.stream!.controller.stream.listen(_onPacket);
+      
+      // Listen to the high-frequency Dev Mode stream
+      _devSub = widget.stream!.controllerDevMode.stream.listen(_onDevPacket);
     }
   }
 
   @override
   void dispose() {
     _sub?.cancel();
+    _devSub?.cancel(); // Clean up the dev stream subscription
     if (widget.stream != null) {
       context.read<SessionStore>()
           .endSession()
@@ -109,73 +111,91 @@ class _MainShellState extends State<MainShell> {
   }
 
   // ---------------------------------------------------------------------------
+  // High-Speed 20Hz Binary Unpacker for Dev Mode
+  // ---------------------------------------------------------------------------
+  void _onDevPacket(List<int> frame) {
+    if (frame.length < 20) return;
+
+    // Convert to Little Endian ByteData view
+    final bd = ByteData.sublistView(Uint8List.fromList(frame));
+
+    // Unpack fields matching your C-struct sizing rules
+    // final int counter   = frame[1];
+    final double accX   = bd.getInt16(2, Endian.little).toDouble();
+    final double accY   = bd.getInt16(4, Endian.little).toDouble();
+    final double accZ   = bd.getInt16(6, Endian.little).toDouble();
+    
+    final double gyroX  = bd.getInt16(8, Endian.little).toDouble();
+    final double gyroY  = bd.getInt16(10, Endian.little).toDouble();
+    final double gyroZ  = bd.getInt16(12, Endian.little).toDouble();
+    
+    final double lightF3    = bd.getUint16(14, Endian.little).toDouble();
+    final double lightClear = bd.getUint16(16, Endian.little).toDouble();
+
+    // 4. Audio (Offsets 18 & 19)
+    final double noiseDbSpl = frame[18].toDouble();
+    final double noiseDbFs  = bd.getInt8(19).toDouble();
+
+    // Push values directly into the active UI buffer pipelines
+    _sensorBuffer.addRawAccel(accX, accY, accZ);
+    _sensorBuffer.addRawGyro(gyroX, gyroY, gyroZ);
+    
+    _sensorBuffer.addRawMic(noiseDbSpl, noiseDbFs);
+    _sensorBuffer.addRawLight(lightClear, lightF3);
+
+  }
+
+  // ---------------------------------------------------------------------------
   // Verified Frame Router
   // ---------------------------------------------------------------------------
 
   void _routeFrame(List<int> frame) {
     final msgType = MsgType.fromByte(frame[1]);
+
+    debugPrint('Rx Frame Type: 0x${frame[1].toRadixString(16).toUpperCase()}');
+    
     if (msgType == null) return;
 
-    switch (msgType) {
-      case MsgType.unifiedState: // 0x55
-        context.read<SessionStore>().onUnifiedPacket(frame);
+ 
+    context.read<SessionStore>().onUnifiedPacket(frame);
 
-        debugPrint('MainShell: Got 0x55 packet! Cadence: ${frame[4]}');
-        
-        final bd = ByteData.sublistView(Uint8List.fromList(frame));
-        final steps        = bd.getUint16(2, Endian.little).toDouble(); // NEW
-        final cadence      = frame[4].toDouble();
-        final activity     = frame[5].toDouble();
-        final uvRisk       = bd.getUint16(6, Endian.little).toDouble();
-        final blueIntensity = bd.getUint16(8, Endian.little).toDouble();
-        final blueRatio    = bd.getUint16(10, Endian.little) / 32767.0; 
-        final sunLike      = bd.getUint16(12, Endian.little) / 32767.0;
-        final clearChannel = bd.getUint16(14, Endian.little).toDouble();
-        _sensorBuffer.addMetrics(
-          steps: steps, // NEW
-          cadence: cadence, 
-          activity: activity,
-          lux: clearChannel, 
-          uvRisk: uvRisk,
-          blueIntensity: blueIntensity,
-          blueRatio: blueRatio,
-          sunLike: sunLike
-        );
+    debugPrint('MainShell: Got 0x55 packet! Cadence: ${frame[4]}');
+    
+    final bd = ByteData.sublistView(Uint8List.fromList(frame));
+    // --- 1. Kinematics (Unchanged) ---
+    // Indexes: [2, 3], 4, 5
+    final steps        = bd.getUint16(2, Endian.little).toDouble(); 
+    final cadence      = frame[4].toDouble();
+    final activity     = frame[5].toDouble();
+    
+    // --- 2. Light Metrics (FIXED ALIGNMENT) ---
+    // Indexes: [6, 7], 8, [9, 10], [11, 12], [13, 14]
+    final uvRisk        = bd.getUint16(6, Endian.little).toDouble();
+    final blueIntensity = frame[8].toDouble(); //  Read as 1 byte (uint8)
+    final blueRatio     = bd.getUint16(10, Endian.little) / 32767.0;  // Shifted to index 9
+    final colorTemp     = bd.getUint16(12, Endian.little).toDouble();
+    final clearChannel  = bd.getUint16(14, Endian.little).toDouble(); // Shifted to index 13
+    
+    // --- 3. Audio Metrics (NEW) ---
+    // Indexes: 15, 16
+    final noiseDbfs     = bd.getInt8(16).toDouble();  // int8_t (Signed)
+    final noiseDbSpl    = frame[17].toDouble();       // uint8_t (Unsigned)
 
-      case MsgType.accel: // 0x01
-        final bd = ByteData.sublistView(Uint8List.fromList(frame));
-        final x = bd.getInt16(2, Endian.little).toDouble(); 
-        final y = bd.getInt16(4, Endian.little).toDouble(); 
-        final z = bd.getInt16(6, Endian.little).toDouble(); 
-        _sensorBuffer.addRawAccel(x, y, z); 
+    // Push to buffer
+    _sensorBuffer.addMetrics(
+      steps: steps, 
+      cadence: cadence, 
+      activity: activity,
+      lux: clearChannel, 
+      uvRisk: uvRisk,
+      blueIntensity: blueIntensity,
+      blueRatio: blueRatio,
+      colorTemp: colorTemp,
+    );
 
-      case MsgType.gyro: // 0x02
-        final bd = ByteData.sublistView(Uint8List.fromList(frame));
-        final x = bd.getInt16(2, Endian.little).toDouble(); 
-        final y = bd.getInt16(4, Endian.little).toDouble(); 
-        final z = bd.getInt16(6, Endian.little).toDouble(); 
-        _sensorBuffer.addRawGyro(x, y, z); 
+    _sensorBuffer.addRawMic(noiseDbSpl, noiseDbfs); // Add mic data to buffers
 
-      case MsgType.lightRawVis: // 0x03
-        final bd = ByteData.sublistView(Uint8List.fromList(frame));
-        _sensorBuffer.addRawLight(
-          bd.getUint16(2, Endian.little).toDouble(),  // F1
-          bd.getUint16(4, Endian.little).toDouble(),  // F2
-          bd.getUint16(6, Endian.little).toDouble(),  // F3
-          bd.getUint16(8, Endian.little).toDouble(),  // F4
-          bd.getUint16(10, Endian.little).toDouble(), // F5
-          bd.getUint16(12, Endian.little).toDouble(), // F6
-          bd.getUint16(14, Endian.little).toDouble(), // F7
-          bd.getUint16(16, Endian.little).toDouble(), // F8
-        );
-
-      case MsgType.battery: // 0xB0
-        widget.stream?.controllerBattery.add(frame);
-      
-      default:
-        break;
-    }
-  } // FIX 3: Added missing closing bracket for the _routeFrame function!
+  }
 
   // ---------------------------------------------------------------------------
   // UI
@@ -197,6 +217,10 @@ class _MainShellState extends State<MainShell> {
             _devMode = v;
             if (_devMode) {
               _pageIndex++;
+              // Send command to flip hardware microcontroller into RAW mode
+              if (widget.stream != null) {
+                widget.stream!.setMcuMode(true);
+              }
             } else {
               _pageIndex--;
               if (widget.stream != null) {
@@ -221,7 +245,7 @@ class _MainShellState extends State<MainShell> {
         index: _pageIndex,
         children: screens,
       ),
-      floatingActionButton: !isConnected
+        floatingActionButton: !isConnected
           ? FloatingActionButton.extended(
               onPressed: () {
                 Navigator.push(

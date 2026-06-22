@@ -109,8 +109,8 @@ class _HomePageState extends State<HomePage> {
       ),
       const SizedBox(height: 16),
       _ChartCard(
-        title: 'SunLike Index (Q15)', 
-        multiData: [widget.buffer.sunLikeHistory], 
+        title: 'Color Temperature (K)', 
+        multiData: [widget.buffer.colorTempHistory], 
         colors: [const Color(0xFFF59E0B)], // Amber
         isDark: isDark,
       ),
@@ -135,21 +135,32 @@ class _HomePageState extends State<HomePage> {
         isDark: isDark,
       ),
       const SizedBox(height: 16),
-      _ChartCard(title: 'F1 - Violet (415nm)', multiData: [widget.buffer.f1], colors: [const Color(0xFF8B5CF6)], isDark: isDark),
-      const SizedBox(height: 12),
-      _ChartCard(title: 'F2 - Deep Blue (445nm)', multiData: [widget.buffer.f2], colors: [const Color(0xFF2563EB)], isDark: isDark),
-      const SizedBox(height: 12),
-      _ChartCard(title: 'F3 - Cyan (480nm)', multiData: [widget.buffer.f3], colors: [const Color(0xFF06B6D4)], isDark: isDark),
-      const SizedBox(height: 12),
-      _ChartCard(title: 'F4 - Teal/Green (515nm)', multiData: [widget.buffer.f4], colors: [const Color(0xFF10B981)], isDark: isDark),
-      const SizedBox(height: 12),
-      _ChartCard(title: 'F5 - Lime (555nm)', multiData: [widget.buffer.f5], colors: [const Color(0xFF84CC16)], isDark: isDark),
-      const SizedBox(height: 12),
-      _ChartCard(title: 'F6 - Amber (590nm)', multiData: [widget.buffer.f6], colors: [const Color(0xFFF59E0B)], isDark: isDark),
-      const SizedBox(height: 12),
-      _ChartCard(title: 'F7 - Red (630nm)', multiData: [widget.buffer.f7], colors: [const Color(0xFFEF4444)], isDark: isDark),
-      const SizedBox(height: 12),
-      _ChartCard(title: 'F8 - Deep Red (680nm)', multiData: [widget.buffer.f8], colors: [const Color(0xFF991B1B)], isDark: isDark),
+      _ChartCard(
+        title: 'Raw Light (F3 = Cyan, Clear = Grey)',
+        multiData: [
+          widget.buffer.f3,       
+          widget.buffer.rawClear  
+        ],
+        colors: [
+          const Color(0xFF06B6D4), 
+          isDark ? Colors.white70 : Colors.black54
+        ],
+        isDark: isDark,
+      ),
+      const SizedBox(height: 16),
+      _ChartCard(
+        title: 'Microphone SPL (0 to 120 dB)',
+        multiData: [widget.buffer.noiseDbSpl], 
+        colors: [const Color(0xFFF59E0B)], // Amber
+        isDark: isDark,
+      ),
+      const SizedBox(height: 16),
+      _ChartCard(
+        title: 'Microphone dBFS (-100 to 0 dB)',
+        multiData: [widget.buffer.noiseDbfs],
+        colors: [const Color(0xFF8B5CF6)],  // Purple
+        isDark: isDark,
+      ),
       const SizedBox(height: 80), // Padding for the floating button
     ];
   }

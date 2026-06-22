@@ -29,6 +29,9 @@ class _ConnectionPageState extends State<ConnectionPage> {
   late Stream<ConnectionStateUpdate>             currentConnectionStream;
   late StreamSubscription<ConnectionStateUpdate> connection;
 
+  StreamSubscription<List<int>>? _rxSubscription;
+  StreamSubscription<List<int>>? _txSubscription;
+
   late QualifiedCharacteristic _rxCharacteristic;
   late QualifiedCharacteristic _txCharacteristic;
 
@@ -126,13 +129,12 @@ class _ConnectionPageState extends State<ConnectionPage> {
 
     setState(() => connecting = true);
 
-    await flutterReactiveBle.requestMtu(
-      deviceId: foundBleDevicesFiltered[index].id, mtu: 512);
-
     currentConnectionStream = flutterReactiveBle.connectToDevice(
       id: foundBleDevicesFiltered[index].id,
       connectionTimeout: const Duration(seconds: 5),
     );
+
+    // ... (keep your existing connection = currentConnectionStream.listen(...) )
 
     connection = currentConnectionStream.listen((event) {
       final id = event.deviceId.toString();
@@ -165,10 +167,24 @@ class _ConnectionPageState extends State<ConnectionPage> {
     debugPrint('Connecting to $id...');
   }
 
-  void connectionProcedure(String id, ConnectionStateUpdate event) {
+  void connectionProcedure(String id, ConnectionStateUpdate event) async {
     connected  = true;
     connecting = false;
     debugPrint('Connected to $id');
+
+    // 1. SAFELY NEGOTIATE MTU AFTER CONNECTION
+    try {
+      await flutterReactiveBle.requestMtu(deviceId: id, mtu: 512);
+    } catch (e) {
+      debugPrint('MTU request failed or ignored: $e');
+    }
+
+    // 2. EXPLICITLY DISCOVER SERVICES (Prevents Android GATT silent failures)
+    try {
+      await flutterReactiveBle.discoverAllServices(id);
+    } catch (e) {
+      debugPrint('Service discovery error: $e');
+    }
 
     // ── RX setup ────────────────────────────────────────────────────────
     _rxCharacteristic = QualifiedCharacteristic(
@@ -177,22 +193,71 @@ class _ConnectionPageState extends State<ConnectionPage> {
       deviceId: event.deviceId,
     );
 
-    const int fixedPacketLength = 20;
+    // const int fixedPacketLength = 20;
     List<int> packetBuffer = [];
 
-    flutterReactiveBle.subscribeToCharacteristic(_rxCharacteristic).listen(
+    await Future.delayed(const Duration(milliseconds: 500));
+    await _rxSubscription?.cancel();
+    
+_rxSubscription = flutterReactiveBle.subscribeToCharacteristic(_rxCharacteristic).listen(
       (packet) {
-        debugPrint('Raw: ${packet.length} bytes → $packet');
         packetBuffer.addAll(packet);
-        final numPackets = (packetBuffer.length / fixedPacketLength).floor();
-        for (int i = 0; i < numPackets; i++) {
-          final data = packetBuffer.sublist(0, fixedPacketLength);
-          packetBuffer.removeRange(0, fixedPacketLength);
-          if (data[0] == 123 && data[fixedPacketLength - 1] == 125) {
-            incomingBLEStream.setNum(data);
-            debugPrint('Valid packet (type: ${String.fromCharCode(data[1])})');
-          } else {
-            debugPrint('Discarding invalid packet: $data');
+        
+        while (packetBuffer.isNotEmpty) {
+          int header = packetBuffer[0];
+
+          // -------------------------------------------------------------
+          // SCENARIO A: The packet is wrapped in '{' (Normal OR Wrapped Dev)
+          // -------------------------------------------------------------
+          if (header == 123) { 
+            int endIndex = packetBuffer.indexOf(125); // Find the '}' bracket
+            
+            if (endIndex != -1) {
+              // We found a complete frame from '{' to '}'
+              final frame = packetBuffer.sublist(0, endIndex + 1);
+              
+              // Only process it if it's large enough to hold real data
+              if (frame.length >= 19) {
+                // Peek at Byte 1 to see what type of data is inside the wrapper
+                int msgType = frame[1]; 
+                
+                if (msgType == 85) { // 0x55 (Normal Metrics)
+                   // Pad it safely to 20 bytes so the rest of the app doesn't break
+                   List<int> paddedFrame = List.from(frame);
+                   while(paddedFrame.length < 20) {paddedFrame.add(0);}
+                   incomingBLEStream.controller.add(paddedFrame);
+                } 
+                else if (msgType == 119) { // 0x77 (Wrapped Dev Mode)
+                   // Strip the '{' and '}' so main_shell gets exactly the raw 20-byte struct
+                   final rawDevStruct = frame.sublist(1, frame.length - 1);
+                   if (rawDevStruct.length >= 20) {
+                     incomingBLEStream.controllerDevMode.add(rawDevStruct.sublist(0, 20));
+                   }
+                }
+              }
+              // Clear the processed frame from the buffer
+              packetBuffer.removeRange(0, endIndex + 1);
+            } else {
+              // We have '{' but haven't received '}' yet. Wait for next BLE chunk.
+              break; 
+            }
+          } 
+          // -------------------------------------------------------------
+          // SCENARIO B: The packet is Unwrapped Dev Mode (Starts exactly with 0x77)
+          // -------------------------------------------------------------
+          else if (header == 119) { 
+            if (packetBuffer.length >= 20) {
+              incomingBLEStream.controllerDevMode.add(packetBuffer.sublist(0, 20));
+              packetBuffer.removeRange(0, 20);
+            } else {
+              break; // Wait for full 20 bytes
+            }
+          } 
+          // -------------------------------------------------------------
+          // SCENARIO C: Garbage data. Drop 1 byte and realign.
+          // -------------------------------------------------------------
+          else {
+            packetBuffer.removeAt(0);
           }
         }
       },
@@ -205,12 +270,18 @@ class _ConnectionPageState extends State<ConnectionPage> {
       characteristicId: characteristicUuidTX,
       deviceId: event.deviceId,
     );
-    incomingBLEStream.controllerSend.stream.listen((data) async {
-      await flutterReactiveBle.writeCharacteristicWithoutResponse(
-        _txCharacteristic, value: data);
+    
+    await _txSubscription?.cancel();
+    _txSubscription = incomingBLEStream.controllerSend.stream.listen((data) async {
+      try {
+        await flutterReactiveBle.writeCharacteristicWithoutResponse(_txCharacteristic, value: data);
+        debugPrint('TX Sent to MCU: $data');
+      } catch (e) {
+        debugPrint('TX Error: $e');
+      }
     });
-
-    // ── Navigate: ensure user exists, then go to MainShell ──────────────
+    
+    if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(content: Text('Connected!')));
 

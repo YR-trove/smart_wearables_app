@@ -1,19 +1,30 @@
 import 'dart:async';
 import 'package:flutter/foundation.dart';
-import 'package:smart_wearables_app/connection/message_type.dart';
-
 class MyStream {
-  StreamController<List<int>> controller        = StreamController<List<int>>.broadcast();
-  StreamController<List<int>> controllerBattery = StreamController<List<int>>.broadcast();
+  // 1. The 1Hz Normal Mode Stream (UI, Step Count, General Metrics)
+  StreamController<List<int>> controller          = StreamController<List<int>>.broadcast();
   
-  // Your brilliant existing write-back channel
-  StreamController<List<int>> controllerSend    = StreamController<List<int>>.broadcast();
+  // 2. The 20Hz Dev Mode Stream (High-speed Accel, Gyro, Light, Mic plots)
+  StreamController<List<int>> controllerDevMode   = StreamController<List<int>>.broadcast();
+  
+  // 3. Telemetry Streams
+  StreamController<List<int>> controllerBattery   = StreamController<List<int>>.broadcast();
+  
+  // 4. Outgoing MCU Commands
+  StreamController<List<int>> controllerSend      = StreamController<List<int>>.broadcast();
 
   void setNum(List<int> data) {
-    if (data[0] == MsgType.battery.description) {
-      controllerBattery.add(data);
-    } else {
+    if (data.isEmpty) return;
+
+    // Route the packet based on its Header Byte (data[0])
+    if (data[0] == 123) { // 123 in decimal: Unified 1Hz Payload
       controller.add(data);
+    } 
+    else if (data[0] == 119) { // 119 in decimal: Omnibus 20Hz Dev Payload
+      controllerDevMode.add(data);
+    }
+    else {
+      debugPrint('Warning: Unknown packet header received: ${data[0]}');
     }
   }
 

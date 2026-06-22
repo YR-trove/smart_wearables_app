@@ -65,7 +65,8 @@ class SessionStore extends ChangeNotifier {
   String _skinBurnRisk          = 'Low';
   int    _circadianScore        = 100;
   double _currentBlueRatio      = 0.0;
-  double _currentSunLikeIndex   = 0.0;
+  int    _colorTemp             = 0;
+  double clearChannel = 0;
 
   int    get sunlightSeconds       => _sunlightSeconds;
   int    get nightBlueLightSeconds => _nightBlueLightSeconds;
@@ -73,7 +74,7 @@ class SessionStore extends ChangeNotifier {
   String get skinBurnRisk          => _skinBurnRisk;
   int    get circadianScore        => _circadianScore;
   double get currentBlueRatio      => _currentBlueRatio;
-  double get currentSunLikeIndex   => _currentSunLikeIndex;
+  int    get colorTemp             => _colorTemp;
 
 // Expose the DAO for UI queries
 SessionDao get sessionDao => _sessionDao;
@@ -162,7 +163,7 @@ String get blueLightExposureLevel {
     _skinBurnRisk          = 'Low';
     _circadianScore        = 100;
     _currentBlueRatio      = 0.0;
-    _currentSunLikeIndex   = 0.0;
+    _colorTemp             = 0;
   }
 
   // ─── Unified 1 Hz packet handler ────────────────────────────────────────────
@@ -185,7 +186,7 @@ String get blueLightExposureLevel {
       uvRisk:             bd.getUint16(6,  Endian.little) / 32767.0,
       blueLightIntensity: bd.getUint16(8,  Endian.little),
       blueLightRatio:     bd.getUint16(10, Endian.little) / 32767.0,
-      sunLikeIndex:       bd.getUint16(12, Endian.little) / 32767.0,
+      colorTemp:          bd.getUint16(12, Endian.little),
       clearChannel:       bd.getUint16(14, Endian.little),
     );
 
@@ -224,13 +225,9 @@ String get blueLightExposureLevel {
 
   void _updateLightMetrics(UnifiedTelemetry r, DateTime ts) {
     _currentBlueRatio    = r.blueLightRatio;
-    _currentSunLikeIndex = r.sunLikeIndex;
+    _colorTemp           = r.colorTemp;
 
     // ── Sunlight accumulation (broad-spectrum daylight threshold)
-    if (r.sunLikeIndex > 0.8) {
-      _sunlightSeconds++;
-      _currentUvIndex = r.uvRisk * 10.0; // Q15 [0-1] → UV index scale [0-10]
-
       // Skin burn risk: UV index × accumulated sun time
       if (_currentUvIndex > 7.0 && _sunlightSeconds > 600) {
         _skinBurnRisk = 'High';
