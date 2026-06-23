@@ -67,6 +67,7 @@ class SessionStore extends ChangeNotifier {
   double _currentBlueRatio      = 0.0;
   int    _colorTemp             = 0;
   double clearChannel = 0;
+  String _focusCondition = 'neutral';
 
   int    get sunlightSeconds       => _sunlightSeconds;
   int    get nightBlueLightSeconds => _nightBlueLightSeconds;
@@ -75,6 +76,7 @@ class SessionStore extends ChangeNotifier {
   int    get circadianScore        => _circadianScore;
   double get currentBlueRatio      => _currentBlueRatio;
   int    get colorTemp             => _colorTemp;
+  String get focusCondition        => _focusCondition;
 
 // Expose the DAO for UI queries
 SessionDao get sessionDao => _sessionDao;
@@ -164,6 +166,7 @@ String get blueLightExposureLevel {
     _circadianScore        = 100;
     _currentBlueRatio      = 0.0;
     _colorTemp             = 0;
+    _focusCondition        = 'neutarl';
   }
 
   // ─── Unified 1 Hz packet handler ────────────────────────────────────────────
@@ -244,6 +247,19 @@ String get blueLightExposureLevel {
       // −1 circadian point per 5 min of high-ratio blue light after 19:00
       if (_nightBlueLightSeconds % 300 == 0 && _circadianScore > 0) {
         _circadianScore -= 1;
+      }
+    }
+
+    // ── Colortemp stress condition (concentration threshold:
+    
+    if (_colorTemp > 3500 && _colorTemp < 5500) {
+        _focusCondition = 'ideal for focus';
+      } else if (_colorTemp > 3000 && _colorTemp < 3500) {
+        _focusCondition = 'ideal for creative tasks';
+      }else if (_colorTemp > 5500) {
+        _focusCondition = 'short-term maximum focus, long-term stress';
+      } else {
+        _focusCondition = 'Relaxation';
       }
     }
   }
