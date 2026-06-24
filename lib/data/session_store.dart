@@ -44,12 +44,14 @@ class SessionStore extends ChangeNotifier {
   int    _activityState   = 0;   // 0=Idle, 1=Walking, 2=Running
   double _distanceKm      = 0.0;
   double _totalKcal       = 0.0;
+  double _currentSpeedKmh = 0.0;
 
-  int    get currentSteps   => _currentSteps;
-  int    get currentCadence => _currentCadence;
-  int    get activityState  => _activityState;
-  double get distanceKm     => _distanceKm;
-  double get totalKcal      => _totalKcal;
+  int    get currentSteps     => _currentSteps;
+  int    get currentCadence   => _currentCadence;
+  int    get activityState    => _activityState;
+  double get distanceKm       => _distanceKm;
+  double get totalKcal        => _totalKcal;
+  double get currentSpeedKmh  => _currentSpeedKmh;
 
   String get activityLabel => switch (_activityState) {
     1 => 'Walking',
@@ -67,7 +69,6 @@ class SessionStore extends ChangeNotifier {
   double _currentBlueRatio      = 0.0;
   int    _colorTemp             = 0;
   double clearChannel = 0;
-  String _focusCondition = 'neutral';
 
   int    get sunlightSeconds       => _sunlightSeconds;
   int    get nightBlueLightSeconds => _nightBlueLightSeconds;
@@ -76,7 +77,22 @@ class SessionStore extends ChangeNotifier {
   int    get circadianScore        => _circadianScore;
   double get currentBlueRatio      => _currentBlueRatio;
   int    get colorTemp             => _colorTemp;
-  String get focusCondition        => _focusCondition;
+
+  // ─── microphone ───────────────────────────────────────
+  double _waveHeights           = 0.0;
+
+  double get waveHeights           => _waveHeights;
+
+  // ─── Focus mode ──────────────────────────────
+  String _focusConditionLight   = 'neutral';
+  String _focusConditionWalkingSpeed = 'neutral';
+  String _focusConditionBreak   = 'neutral';
+  String _focusConditionAudio   = 'neutral';
+
+  String get focusConditionLight        => _focusConditionLight;
+  String get focusConditionWalkingSpeed => _focusConditionWalkingSpeed;
+  String get focusConditionBreak        => _focusConditionBreak;
+  String get focusConditionAudio        => _focusConditionAudio;
 
 // Expose the DAO for UI queries
 SessionDao get sessionDao => _sessionDao;
@@ -153,11 +169,13 @@ String get blueLightExposureLevel {
 
   void _resetAccumulators() {
     // Fitness
-    _currentSteps   = 0;
-    _currentCadence = 0;
-    _activityState  = 0;
-    _distanceKm     = 0.0;
-    _totalKcal      = 0.0;
+    _currentSteps    = 0;
+    _currentCadence  = 0;
+    _activityState   = 0;
+    _distanceKm      = 0.0;
+    _totalKcal       = 0.0;
+    _currentSpeedKmh = 0.0;
+    
     // Light
     _sunlightSeconds       = 0;
     _nightBlueLightSeconds = 0;
@@ -166,7 +184,15 @@ String get blueLightExposureLevel {
     _circadianScore        = 100;
     _currentBlueRatio      = 0.0;
     _colorTemp             = 0;
-    _focusCondition        = 'neutarl';
+
+    // microphone
+    _waveHeights           = 0;
+
+    // Focus
+    _focusConditionLight        = 'neutarl';
+    _focusConditionWalkingSpeed = 'neutral';
+    _focusConditionBreak        = 'neutral';
+    _focusConditionAudio        = 'neutral';
   }
 
   // ─── Unified 1 Hz packet handler ────────────────────────────────────────────
@@ -200,6 +226,8 @@ String get blueLightExposureLevel {
     _updateFitnessMetrics(row);
     _updateLightMetrics(row, ts);
     notifyListeners();
+
+    _updateFocusMode();
   }
 
   // ─── Fitness metric derivation ───────────────────────────────────────────────
@@ -212,6 +240,8 @@ String get blueLightExposureLevel {
     // Distance: stride length ≈ 41.4 % of body height (De Vita & Hortobagyi, 2000)
     final heightCm = _currentUser?.heightCm ?? 170.0;
     _distanceKm = (_currentSteps * heightCm * 0.414) / 100000.0;
+    // speed in km/h
+    _currentSpeedKmh = _currentSteps * _distanceKm * 60.0;
 
     // Calories: MET formula, 1 packet = 1 second of activity
     // Kcal/s = (MET × 3.5 × weightKg) / (200 × 60)
@@ -250,18 +280,43 @@ String get blueLightExposureLevel {
       }
     }
 
+  // ─── Focus mode ───────────────
+  void _updateFocusMode(){
     // ── Colortemp stress condition (concentration threshold:
     
     if (_colorTemp > 3500 && _colorTemp < 5500) {
-        _focusCondition = 'ideal for focus';
+        _focusConditionLight = 'ideal for focus';
       } else if (_colorTemp > 3000 && _colorTemp < 3500) {
-        _focusCondition = 'ideal for creative tasks';
+        _focusConditionLight = 'ideal for creativity';
       }else if (_colorTemp > 5500) {
-        _focusCondition = 'short-term maximum focus, long-term stress';
+        _focusConditionLight = 'short-term maximum focus, long-term stress';
       } else {
-        _focusCondition = 'Relaxation';
+        _focusConditionLight = 'Relaxation';
       }
-    }
+
+    // Acustic stressfilter
+    if (_waveHeights > 45 && _waveHeights < 70) {
+        _focusConditionAudio = 'ideal for focus';
+      }else if (_waveHeights < 45) {
+        _focusConditionAudio = 'optimal for complex logic and short-term focus , stressfull over long time';
+      } else {
+        _focusConditionAudio = 'Stress factor';
+      }
+
+    // Physical Activity stressfilter
+    if (_currentSpeedKmh > 0 && _currentSpeedKmh < 3) {
+        _focusConditionWalkingSpeed = 'ideal for focus';
+      }else if (_currentSpeedKmh > 3) {
+        _focusConditionWalkingSpeed = 'to fast for ideal focus';
+      }
+    // Physical Activity stressfilter Break
+    if (_currentSteps > 500 && _currentSteps < 3000) {
+        _focusConditionBreak = 'ideal regeneration';
+      }else if (_currentSteps > 3000) {
+        _focusConditionBreak = 'Physical activity too high for ideal regeneration';
+      }else if (_currentSteps < 500){
+        _focusConditionBreak = 'Physical activity too low for ideal regeneration';
+      }
   }
 }
 
