@@ -8,7 +8,7 @@ class SessionSummary {
   final double noiseExposureSec;
   final double blueLightDose;     // integrated intensity over session
   final double avgUvRisk;
-  final double avgSunLikeIndex;
+  final double avgcolorTemp;        // average color temperature (K)
 
   const SessionSummary({
     required this.sessionId,
@@ -18,7 +18,7 @@ class SessionSummary {
     required this.noiseExposureSec,
     required this.blueLightDose,
     required this.avgUvRisk,
-    required this.avgSunLikeIndex,
+    required this.avgcolorTemp,
   });
 
   Map<String, dynamic> toMap() => {
@@ -29,17 +29,18 @@ class SessionSummary {
     'noise_exposure_s': noiseExposureSec,
     'bluelight_dose': blueLightDose,
     'avg_uv_risk': avgUvRisk,
-    'avg_sun_like_idx': avgSunLikeIndex,
+    'avg_color_temp': avgcolorTemp,
   };
 
   factory SessionSummary.fromMap(Map<String, dynamic> m) => SessionSummary(
     sessionId: m['session_id'] as int,
-    totalSteps: (m['total_steps'] as int?) ?? 0,
-    peakNoiseDb: (m['peak_noise_db'] as double?) ?? 0.0,
-    noiseDosePct: (m['noise_dose_pct'] as double?) ?? 0.0,
-    noiseExposureSec: (m['noise_exposure_s'] as double?) ?? 0.0,
-    blueLightDose: (m['bluelight_dose'] as double?) ?? 0.0,
-    avgUvRisk: (m['avg_uv_risk'] as double?) ?? 0.0,
-    avgSunLikeIndex: (m['avg_sun_like_idx'] as double?) ?? 0.0,
+    
+    totalSteps:       (m['total_steps']      as num?)?.toInt()    ?? 0,
+    peakNoiseDb:      (m['peak_noise_db']    as num?)?.toDouble() ?? 0.0,
+    noiseDosePct:     (m['noise_dose_pct']   as num?)?.toDouble() ?? 0.0,
+    noiseExposureSec: (m['noise_exposure_s'] as num?)?.toDouble() ?? 0.0,
+    blueLightDose:    (m['bluelight_dose']   as num?)?.toDouble() ?? 0.0,
+    avgUvRisk:        (m['avg_uv_risk']      as num?)?.toDouble() ?? 0.0,
+    avgcolorTemp:     (m['avg_color_temp']   as num?)?.toDouble() ?? 0.0,
   );
 }

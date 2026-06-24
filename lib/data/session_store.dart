@@ -6,11 +6,6 @@ import 'package:smart_wearables_app/data/models/session_model.dart';
 import 'package:smart_wearables_app/data/models/unified_telemetry.dart';
 import 'package:smart_wearables_app/data/models/user_profile.dart';
 
-/// Central state manager for user, session, live telemetry, and derived metrics.
-///
-/// All biomechanical (fitness) and photobiological (light) metrics are
-/// accumulated here on every 1 Hz packet so the UI pages remain stateless
-/// read-only consumers via [context.watch<SessionStore>()].
 class SessionStore extends ChangeNotifier {
   final SessionDao _sessionDao;
   final UserDao    _userDao;
@@ -28,8 +23,8 @@ class SessionStore extends ChangeNotifier {
   UnifiedTelemetry? _latestTelemetry;
   DateTime?         _sessionStartTime;
 
-  UserProfile?      get currentUser     => _currentUser;
-  SessionModel?     get activeSession   => _activeSession;
+  UserProfile?      get currentUser   => _currentUser;
+  SessionModel?     get activeSession => _activeSession;
   UnifiedTelemetry? get latestTelemetry => _latestTelemetry;
   DateTime?         get sessionStartTime => _sessionStartTime;
   Duration get elapsed {
@@ -51,6 +46,10 @@ class SessionStore extends ChangeNotifier {
   double get distanceKm     => _distanceKm;
   double get totalKcal      => _totalKcal;
 
+  // ─── Audio Accumulators ──────────────────────────────────────────────────────
+  double noiseDbSpl = 0.0;
+  double noiseDbfs  = 0.0;
+
   String get activityLabel => switch (_activityState) {
     1 => 'Walking',
     2 => 'Running',
@@ -66,7 +65,8 @@ class SessionStore extends ChangeNotifier {
   int    _circadianScore        = 100;
   double _currentBlueRatio      = 0.0;
   int    _colorTemp             = 0;
-  double clearChannel = 0;
+  double clearChannel           = 0;
+  int    _noiseDbSpl            = 0;
 
   int    get sunlightSeconds       => _sunlightSeconds;
   int    get nightBlueLightSeconds => _nightBlueLightSeconds;
@@ -75,16 +75,39 @@ class SessionStore extends ChangeNotifier {
   int    get circadianScore        => _circadianScore;
   double get currentBlueRatio      => _currentBlueRatio;
   int    get colorTemp             => _colorTemp;
+  int    get noiseDbSpl            => _noiseDbSpl;
 
-// Expose the DAO for UI queries
-SessionDao get sessionDao => _sessionDao;
+  SessionDao get sessionDao => _sessionDao;
 
-// Calculate the exposure level string for the UI
-String get blueLightExposureLevel {
-  if (_nightBlueLightSeconds > 3600) return 'High';
-  if (_nightBlueLightSeconds > 1800) return 'Moderate';
-  return 'Low';
-}
+  String get blueLightExposureLevel {
+    if (_nightBlueLightSeconds > 3600) return 'High';
+    if (_nightBlueLightSeconds > 1800) return 'Moderate';
+    return 'Low';
+  }
+
+  // ─── Dev Dashboard Historical Buffers ───────────────────────────────────────
+  
+  static const int _maxBufferSize = 60; // Holds 60 seconds of rolling history
+  final List<double> _stepsHistory = [];
+  final List<double> _cadenceHistory = [];
+  final List<double> _activityHistory = [];
+  final List<double> _uvHistory = [];
+  final List<double> _blueIntensityHistory = [];
+  final List<double> _blueRatioHistory = [];
+  final List<double> _colorTempHistory = [];
+  final List<double> _clearChannelHistory = [];
+  final List<int>    _noiseDbSplHistory = [];
+  // Exposes a unified historical structure directly to your custom oscilloscope painter
+  List<List<double>> get devMetricsHistory => [
+    _stepsHistory,
+    _cadenceHistory,
+    _activityHistory,
+    _uvHistory,
+    _blueIntensityHistory,
+    _blueRatioHistory,
+    _colorTempHistory,
+    _clearChannelHistory,
+  ];
 
   // ─── Initialisation — crash recovery ────────────────────────────────────────
 
@@ -150,13 +173,11 @@ String get blueLightExposureLevel {
   }
 
   void _resetAccumulators() {
-    // Fitness
     _currentSteps   = 0;
     _currentCadence = 0;
     _activityState  = 0;
     _distanceKm     = 0.0;
     _totalKcal      = 0.0;
-    // Light
     _sunlightSeconds       = 0;
     _nightBlueLightSeconds = 0;
     _currentUvIndex        = 0.0;
@@ -164,12 +185,23 @@ String get blueLightExposureLevel {
     _circadianScore        = 100;
     _currentBlueRatio      = 0.0;
     _colorTemp             = 0;
+    clearChannel           = 0;
+    _noiseDbSpl            = 0;
+
+    // Clear dev history on session reset
+    _stepsHistory.clear();
+    _cadenceHistory.clear();
+    _activityHistory.clear();
+    _uvHistory.clear();
+    _blueIntensityHistory.clear();
+    _blueRatioHistory.clear();
+    _colorTempHistory.clear();
+    _clearChannelHistory.clear();
+    _noiseDbSplHistory.clear();
   }
 
   // ─── Unified 1 Hz packet handler ────────────────────────────────────────────
 
-  /// Decodes a pre-validated 20-byte [0x55] payload, persists it, and
-  /// updates all derived fitness + light metrics before notifying the UI.
   Future<void> onUnifiedPacket(List<int> rawData) async {
     if (_activeSession == null) return;
 
@@ -180,22 +212,29 @@ String get blueLightExposureLevel {
     final row = UnifiedTelemetry(
       sessionId:          _activeSession!.id!,
       tsMs:               ts.millisecondsSinceEpoch,
-      stepCount:          bd.getUint16(2,  Endian.little),
+      stepCount:          bd.getUint16(2, Endian.little),
       cadence:            bd.getUint8(4),
       activityState:      bd.getUint8(5),
-      uvRisk:             bd.getUint16(6,  Endian.little) / 32767.0,
-      blueLightIntensity: bd.getUint16(8,  Endian.little),
-      blueLightRatio:     bd.getUint16(10, Endian.little) / 32767.0,
-      colorTemp:          bd.getUint16(12, Endian.little),
-      clearChannel:       bd.getUint16(14, Endian.little),
+      uvRisk:             bd.getUint16(6, Endian.little) / 32767.0,
+      blueLightIntensity: bd.getUint8(8),
+      blueLightRatio:     bd.getUint16(10, Endian.little) / 32767.0, 
+      colorTemp:          bd.getUint16(12, Endian.little), 
+      clearChannel:       bd.getUint16(14, Endian.little), 
+      noiseDbSpl:         bd.getUint8(17), // uint8_t (Unsigned)
     );
 
-    // Persist first — fire and forget (unawaited intentional for UI latency)
-    unawaited(_sessionDao.insertUnified(row));
+    noiseDbfs  = bd.getInt8(16).toDouble();
+    noiseDbSpl = payload[17].toDouble();
 
+    unawaited(_sessionDao.insertUnified(row));
+    
     _latestTelemetry = row;
     _updateFitnessMetrics(row);
     _updateLightMetrics(row, ts);
+    
+    // Process rolling historical entries for dev oscilloscope
+    _pushToDevHistory(row);
+
     notifyListeners();
   }
 
@@ -206,17 +245,14 @@ String get blueLightExposureLevel {
     _currentCadence = r.cadence;
     _activityState  = r.activityState;
 
-    // Distance: stride length ≈ 41.4 % of body height (De Vita & Hortobagyi, 2000)
     final heightCm = _currentUser?.heightCm ?? 170.0;
     _distanceKm = (_currentSteps * heightCm * 0.414) / 100000.0;
 
-    // Calories: MET formula, 1 packet = 1 second of activity
-    // Kcal/s = (MET × 3.5 × weightKg) / (200 × 60)
     final weightKg = _currentUser?.weightKg ?? 70.0;
     final met = switch (_activityState) {
-      2 => 8.0,  // Running
-      1 => 3.5,  // Walking
-      _ => 1.0,  // Idle
+      2 => 5.0,  
+      1 => 3.5,  
+      _ => 0.0,  
     };
     _totalKcal += (met * 3.5 * weightKg) / 12000.0;
   }
@@ -225,31 +261,59 @@ String get blueLightExposureLevel {
 
   void _updateLightMetrics(UnifiedTelemetry r, DateTime ts) {
     _currentBlueRatio    = r.blueLightRatio;
-    _colorTemp           = r.colorTemp;
+    _colorTemp           = r.colorTemp.toInt();
+    clearChannel         = r.clearChannel.toDouble();
+    _currentUvIndex      = r.uvRisk * 11.0;
 
-    // ── Sunlight accumulation (broad-spectrum daylight threshold)
-      // Skin burn risk: UV index × accumulated sun time
-      if (_currentUvIndex > 7.0 && _sunlightSeconds > 600) {
-        _skinBurnRisk = 'High';
-      } else if (_currentUvIndex > 4.0 && _sunlightSeconds > 1200) {
-        _skinBurnRisk = 'Moderate';
-      } else {
-        _skinBurnRisk = 'Low';
-      }
+    if (r.clearChannel > 500 && r.colorTemp > 4500) {
+      _sunlightSeconds++;
     }
 
-    // ── Nighttime blue light (circadian disruption, threshold: 19:00)
+    if (_currentUvIndex > 7.0 && _sunlightSeconds > 600) {
+      _skinBurnRisk = 'High';
+    } else if (_currentUvIndex > 4.0 && _sunlightSeconds > 1200) {
+      _skinBurnRisk = 'Moderate';
+    } else {
+      _skinBurnRisk = 'Low';
+    }
+
     if (ts.hour >= 19 && r.blueLightRatio > 0.35) {
       _nightBlueLightSeconds++;
-      // −1 circadian point per 5 min of high-ratio blue light after 19:00
       if (_nightBlueLightSeconds % 300 == 0 && _circadianScore > 0) {
         _circadianScore -= 1;
       }
     }
   }
+
+  // ─── Dev Rolling History Management ──────────────────────────────────────────
+
+  void _pushToDevHistory(UnifiedTelemetry r) {
+    // Keep internal memory bounded to prevent memory leaks over long sessions
+    if (_stepsHistory.length >= _maxBufferSize) {
+      _stepsHistory.removeAt(0);
+      _cadenceHistory.removeAt(0);
+      _activityHistory.removeAt(0);
+      _uvHistory.removeAt(0);
+      _blueIntensityHistory.removeAt(0);
+      _blueRatioHistory.removeAt(0);
+      _colorTempHistory.removeAt(0);
+      _clearChannelHistory.removeAt(0);
+      _noiseDbSplHistory.removeAt(0);
+    }
+
+    // Append standard double telemetry data types
+    _stepsHistory.add(r.stepCount.toDouble());
+    _cadenceHistory.add(r.cadence.toDouble());
+    _activityHistory.add(r.activityState.toDouble());
+    _uvHistory.add(r.uvRisk * 11.0); // Converted to direct UV Index
+    _blueIntensityHistory.add(r.blueLightIntensity.toDouble());
+    _blueRatioHistory.add(r.blueLightRatio);
+    _colorTempHistory.add(r.colorTemp.toDouble());
+    _clearChannelHistory.add(r.clearChannel.toDouble());
+    _noiseDbSplHistory.add(r.noiseDbSpl); // Add mic data to history
+  }
 }
 
-/// Utility — fire-and-forget unawaited helper.
 void unawaited(Future<void> future) {
   future.catchError((e) => debugPrint('SessionStore unawaited error: $e'));
 }

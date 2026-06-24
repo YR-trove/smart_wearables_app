@@ -1,64 +1,124 @@
+import 'dart:math';
 import 'package:flutter/material.dart';
-import '../app_theme.dart';
+import 'package:provider/provider.dart';
+import '../data/session_store.dart'; 
 
-class StressPage extends StatelessWidget {
+class StressPage extends StatefulWidget {
   const StressPage({super.key});
 
-  static const _waveHeights = [40, 60, 45, 80, 50, 65, 35, 90, 55, 70, 40, 60, 45, 80, 50, 65, 40, 55, 85];
+  @override
+  State<StressPage> createState() => _StressPageState();
+}
+
+class _StressPageState extends State<StressPage> {
+  // Live State Tracking
+  double _peakNoise = 0.0;
+  double _accumulatedDosePct = 0.0;
+  int _lastElapsedSeconds = 0;
+  
+  // Rolling buffer for the live audio visualizer (19 bars)
+  final List<double> _waveHistory = List.filled(19, 10.0);
+
+  // Hardcoded mock for the timeline (can be wired to a DB later)
   static const _timelineData = [
     ('8a', 45), ('10a', 55), ('12p', 68), ('2p', 94), ('4p', 72), ('6p', 65), ('8p', 50)
   ];
 
+  String _getNoiseLabel(double spl) {
+    if (spl < 50) return 'Quiet';
+    if (spl < 70) return 'Moderate';
+    if (spl < 85) return 'Loud';
+    return 'Dangerous';
+  }
+
+  String _formatDuration(Duration d) {
+    String twoDigits(int n) => n.toString().padLeft(2, '0');
+    return "${d.inHours}h ${twoDigits(d.inMinutes.remainder(60))}m";
+  }
+
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final sessionStore = context.watch<SessionStore>();
+    final currentSpl = sessionStore.noiseDbSpl;
+    final elapsedSeconds = sessionStore.elapsed.inSeconds;
+
+    // Lock state mutation behind the 1-second tick check
+    if (elapsedSeconds > _lastElapsedSeconds) {
+      int deltaS = elapsedSeconds - _lastElapsedSeconds;
+
+      if (currentSpl > _peakNoise) _peakNoise = currentSpl;
+
+      for (int i = 0; i < _waveHistory.length - 1; i++) {
+        _waveHistory[i] = _waveHistory[i + 1];
+      }
+      final jitterAmount = currentSpl > 40 ? 12 : 2;
+      final jitter = (Random().nextDouble() - 0.5) * jitterAmount;
+      _waveHistory.last = (currentSpl + jitter).clamp(10.0, 120.0);
+
+      if (currentSpl >= 70) { 
+        double safeTimeSeconds = (8 * 3600) / pow(2, (currentSpl - 85) / 3.0);
+        _accumulatedDosePct += (deltaS / safeTimeSeconds);
+      }
+      _lastElapsedSeconds = elapsedSeconds;
+    }
+
     return Scaffold(
-      backgroundColor: AppColors.background,
-      appBar: _buildAppBar(),
+      backgroundColor: theme.scaffoldBackgroundColor,
+      appBar: _buildAppBar(theme),
       body: ListView(
         padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
         children: [
-          _noiseHero(),
+          _noiseHero(currentSpl, theme),
           const SizedBox(height: 20),
-          _summarySection(),
+          _summarySection(sessionStore.elapsed, theme),
           const SizedBox(height: 20),
-          _alertCards(),
+          _alertCards(currentSpl, theme),
           const SizedBox(height: 20),
-          _earSafetySection(),
+          _earSafetySection(theme),
           const SizedBox(height: 20),
-          _timelineSection(),
+          _timelineSection(theme),
           const SizedBox(height: 8),
         ],
       ),
     );
   }
 
-  PreferredSizeWidget _buildAppBar() {
+  PreferredSizeWidget _buildAppBar(ThemeData theme) {
     return AppBar(
-      backgroundColor: AppColors.background,
+      backgroundColor: theme.scaffoldBackgroundColor,
       elevation: 0,
       scrolledUnderElevation: 0,
       centerTitle: true,
-      title: const Text(
+      title: Text(
         'Stress & Noise',
-        style: TextStyle(fontSize: 17, fontWeight: FontWeight.w600, color: AppColors.primary),
+        style: TextStyle(
+          fontSize: 17, 
+          fontWeight: FontWeight.w600, 
+          color: theme.colorScheme.onSurface,
+        ),
       ),
     );
   }
 
-  Widget _noiseHero() {
+  Widget _noiseHero(double currentSpl, ThemeData theme) {
     return Column(
       children: [
-        const Text(
-          '68 dB',
+        Text(
+          '${currentSpl.toInt()} dB',
           style: TextStyle(
             fontSize: 42,
             fontWeight: FontWeight.bold,
-            color: AppColors.primary,
+            color: currentSpl > 85 ? theme.colorScheme.error : theme.colorScheme.onSurface,
           ),
         ),
-        const Text(
-          'Moderate',
-          style: TextStyle(fontSize: 16, fontWeight: FontWeight.w500, color: AppColors.muted),
+        Text(
+          _getNoiseLabel(currentSpl),
+          style: TextStyle(
+            fontSize: 16, 
+            fontWeight: FontWeight.w500, 
+            color: theme.colorScheme.onSurfaceVariant,
+          ),
         ),
         const SizedBox(height: 16),
         SizedBox(
@@ -66,13 +126,17 @@ class StressPage extends StatelessWidget {
           child: Row(
             mainAxisAlignment: MainAxisAlignment.center,
             crossAxisAlignment: CrossAxisAlignment.end,
-            children: _waveHeights.map((h) {
+            children: _waveHistory.map((val) {
               return Container(
                 width: 6,
-                height: h * 0.48,
+                height: (val * 0.4).clamp(4.0, 48.0),
                 margin: const EdgeInsets.symmetric(horizontal: 2),
                 decoration: BoxDecoration(
-                  color: h > 75 ? AppColors.warning : const Color(0xFF60A5FA),
+                  color: val > 85 
+                      ? theme.colorScheme.error 
+                      : val > 70 
+                          ? const Color(0xFFFF9800) 
+                          : const Color(0xFF60A5FA),
                   borderRadius: BorderRadius.circular(99),
                 ),
               );
@@ -83,17 +147,18 @@ class StressPage extends StatelessWidget {
     );
   }
 
-  Widget _summarySection() {
+  Widget _summarySection(Duration elapsed, ThemeData theme) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const SectionLabel("Today's Summary"),
+        const SectionLabel("Session Summary"),
         const SizedBox(height: 6),
         AppCard(
           child: Column(
             children: [
-              CardRow(label: 'Exposure', value: '4h 22m'),
-              CardRow(label: 'Peak Noise', value: '94 dB at 2:15 PM', showDivider: false),
+              _metricRow('Exposure', _formatDuration(elapsed), theme),
+              const SizedBox(height: 12),
+              _metricRow('Peak Noise', '${_peakNoise.toInt()} dB', theme),
             ],
           ),
         ),
@@ -101,29 +166,38 @@ class StressPage extends StatelessWidget {
     );
   }
 
-  Widget _alertCards() {
+  Widget _alertCards(double currentSpl, ThemeData theme) {
+    bool isLoud = currentSpl > 85;
+    bool isFatigued = _accumulatedDosePct > 0.5;
+    
     return Column(
       children: [
         AppCard(
-          leftBorderColor: AppColors.warning,
+          leftBorderColor: isFatigued ? const Color(0xFFFF9800) : theme.colorScheme.onSurface,
           padding: const EdgeInsets.all(16),
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Icon(Icons.warning_amber_rounded, color: AppColors.warning, size: 20),
+              Icon(
+                isFatigued ? Icons.warning_amber_rounded : Icons.info_outline, 
+                color: isFatigued ? const Color(0xFFFF9800) : theme.colorScheme.onSurface, 
+                size: 20
+              ),
               const SizedBox(width: 10),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
-                  children: const [
+                  children: [
                     Text(
-                      'Prolonged Noise Warning',
-                      style: TextStyle(fontSize: 15, fontWeight: FontWeight.w500, color: AppColors.primary),
+                      'Accumulated Fatigue',
+                      style: TextStyle(fontSize: 15, fontWeight: FontWeight.w500, color: theme.colorScheme.onSurface),
                     ),
-                    SizedBox(height: 4),
+                    const SizedBox(height: 4),
                     Text(
-                      '2h 10m in >70 dB, Mild hearing fatigue',
-                      style: TextStyle(fontSize: 13, color: AppColors.muted),
+                      isFatigued 
+                        ? 'High noise dose detected. Consider resting your ears.'
+                        : 'Acoustic dose is within healthy limits.',
+                      style: TextStyle(fontSize: 13, color: theme.colorScheme.onSurfaceVariant),
                     ),
                   ],
                 ),
@@ -133,25 +207,31 @@ class StressPage extends StatelessWidget {
         ),
         const SizedBox(height: 8),
         AppCard(
-          leftBorderColor: AppColors.danger,
+          leftBorderColor: isLoud ? theme.colorScheme.error : theme.colorScheme.onSurface,
           padding: const EdgeInsets.all(16),
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Icon(Icons.monitor_heart_outlined, color: AppColors.danger, size: 20),
+              Icon(
+                Icons.monitor_heart_outlined, 
+                color: isLoud ? theme.colorScheme.error : theme.colorScheme.onSurface, 
+                size: 20
+              ),
               const SizedBox(width: 10),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
-                  children: const [
+                  children: [
                     Text(
                       'Stress Indicator',
-                      style: TextStyle(fontSize: 15, fontWeight: FontWeight.w500, color: AppColors.primary),
+                      style: TextStyle(fontSize: 15, fontWeight: FontWeight.w500, color: theme.colorScheme.onSurface),
                     ),
-                    SizedBox(height: 4),
+                    const SizedBox(height: 4),
                     Text(
-                      'High noise correlated with elevated stress',
-                      style: TextStyle(fontSize: 13, color: AppColors.muted),
+                      isLoud 
+                        ? 'Current noise correlates with elevated stress triggers.'
+                        : 'Current environment supports calm physiological state.',
+                      style: TextStyle(fontSize: 13, color: theme.colorScheme.onSurfaceVariant),
                     ),
                   ],
                 ),
@@ -163,7 +243,9 @@ class StressPage extends StatelessWidget {
     );
   }
 
-  Widget _earSafetySection() {
+  Widget _earSafetySection(ThemeData theme) {
+    double displayPct = (_accumulatedDosePct * 100).clamp(0.0, 100.0);
+    
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -175,17 +257,17 @@ class StressPage extends StatelessWidget {
             children: [
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: const [
-                  Text('Daily Dose', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w500, color: AppColors.primary)),
-                  Text('62%', style: TextStyle(fontSize: 15, color: AppColors.muted)),
+                children: [
+                  Text('Session Dose', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w500, color: theme.colorScheme.onSurface)),
+                  Text('${displayPct.toStringAsFixed(1)}%', style: TextStyle(fontSize: 15, color: theme.colorScheme.onSurfaceVariant)),
                 ],
               ),
               const SizedBox(height: 10),
-              const AppProgressBar(value: 0.62),
+              AppProgressBar(value: _accumulatedDosePct.clamp(0.0, 1.0)),
               const SizedBox(height: 8),
-              const Text(
-                '62% of safe limit (WHO 85 dB / 8h)',
-                style: TextStyle(fontSize: 12, color: AppColors.muted),
+              Text(
+                'Based on WHO daily allowance (85 dB / 8h)',
+                style: TextStyle(fontSize: 12, color: theme.colorScheme.onSurfaceVariant),
                 textAlign: TextAlign.center,
               ),
             ],
@@ -195,7 +277,7 @@ class StressPage extends StatelessWidget {
     );
   }
 
-  Widget _timelineSection() {
+  Widget _timelineSection(ThemeData theme) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -219,7 +301,7 @@ class StressPage extends StatelessWidget {
                           alignment: Alignment.bottomCenter,
                           child: Container(
                             decoration: BoxDecoration(
-                              color: val > 80 ? AppColors.warning : const Color(0xFF60A5FA),
+                              color: val > 80 ? const Color(0xFFFF9800) : const Color(0xFF60A5FA),
                               borderRadius: const BorderRadius.vertical(top: Radius.circular(5)),
                             ),
                           ),
@@ -233,13 +315,106 @@ class StressPage extends StatelessWidget {
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: _timelineData.map((d) {
-                  return Text(d.$1, style: const TextStyle(fontSize: 10, color: AppColors.inactive));
+                  return Text(d.$1, style: TextStyle(fontSize: 10, color: theme.disabledColor));
                 }).toList(),
               ),
             ],
           ),
         ),
       ],
+    );
+  }
+
+  Widget _metricRow(String label, String value, ThemeData theme) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        Text(label, style: TextStyle(color: theme.colorScheme.onSurfaceVariant, fontSize: 13)),
+        Text(
+          value,
+          style: TextStyle(
+            color: theme.colorScheme.onSurface,
+            fontSize: 14,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+// ============================================================================
+// Internal Reusable UI Widgets (No external files needed)
+// ============================================================================
+
+class SectionLabel extends StatelessWidget {
+  final String text;
+  const SectionLabel(this.text, {super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Text(
+      text.toUpperCase(),
+      style: TextStyle(
+        fontSize: 12,
+        fontWeight: FontWeight.bold,
+        color: Theme.of(context).colorScheme.onSurfaceVariant,
+        letterSpacing: 1.2,
+      ),
+    );
+  }
+}
+
+class AppCard extends StatelessWidget {
+  final Widget child;
+  final EdgeInsetsGeometry padding;
+  final Color? leftBorderColor;
+
+  const AppCard({
+    super.key, 
+    required this.child, 
+    this.padding = const EdgeInsets.all(16),
+    this.leftBorderColor,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Container(
+      padding: padding,
+      decoration: BoxDecoration(
+        color: theme.cardColor,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: theme.dividerColor.withValues(alpha: 0.1)),
+        // Add optional left accent line for alerts
+        boxShadow: leftBorderColor != null 
+          ? [BoxShadow(color: leftBorderColor!, offset: const Offset(-4, 0))] 
+          : null,
+      ),
+      child: child,
+    );
+  }
+}
+
+class AppProgressBar extends StatelessWidget {
+  final double value; // 0.0 to 1.0
+  const AppProgressBar({super.key, required this.value});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final color = value > 0.85 ? theme.colorScheme.error : 
+                  value > 0.5 ? const Color(0xFFFF9800) : 
+                  const Color(0xFF66BB6A);
+                  
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(6),
+      child: LinearProgressIndicator(
+        value: value,
+        minHeight: 8,
+        backgroundColor: theme.dividerColor.withValues(alpha: 0.1),
+        valueColor: AlwaysStoppedAnimation<Color>(color),
+      ),
     );
   }
 }
