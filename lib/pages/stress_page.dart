@@ -20,9 +20,9 @@ class _StressPageState extends State<StressPage> {
   final List<double> _waveHistory = List.filled(19, 10.0);
 
   // Hardcoded mock for the timeline (can be wired to a DB later)
-  static const _timelineData = [
-    ('8a', 45), ('10a', 55), ('12p', 68), ('2p', 94), ('4p', 72), ('6p', 65), ('8p', 50)
-  ];
+  // static const _timelineData = [
+  //   ('8a', 45), ('10a', 55), ('12p', 68), ('2p', 94), ('4p', 72), ('6p', 65), ('8p', 50)
+  // ];
 
   String _getNoiseLabel(double spl) {
     if (spl < 50) return 'Quiet';
@@ -40,7 +40,7 @@ class _StressPageState extends State<StressPage> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final sessionStore = context.watch<SessionStore>();
-    final currentSpl = sessionStore.noiseDbSpl;
+    final currentSpl = sessionStore.latestNoiseDbSpl;
     final elapsedSeconds = sessionStore.elapsed.inSeconds;
 
     // Lock state mutation behind the 1-second tick check
@@ -77,8 +77,8 @@ class _StressPageState extends State<StressPage> {
           const SizedBox(height: 20),
           _earSafetySection(theme),
           const SizedBox(height: 20),
-          _timelineSection(theme),
-          const SizedBox(height: 8),
+          // _timelineSection(theme),
+          // const SizedBox(height: 8),
         ],
       ),
     );
@@ -277,53 +277,53 @@ class _StressPageState extends State<StressPage> {
     );
   }
 
-  Widget _timelineSection(ThemeData theme) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const SectionLabel("Today's Timeline"),
-        const SizedBox(height: 6),
-        AppCard(
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            children: [
-              SizedBox(
-                height: 80,
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.end,
-                  children: _timelineData.map((d) {
-                    final val = d.$2;
-                    return Expanded(
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 4),
-                        child: FractionallySizedBox(
-                          heightFactor: val / 100,
-                          alignment: Alignment.bottomCenter,
-                          child: Container(
-                            decoration: BoxDecoration(
-                              color: val > 80 ? const Color(0xFFFF9800) : const Color(0xFF60A5FA),
-                              borderRadius: const BorderRadius.vertical(top: Radius.circular(5)),
-                            ),
-                          ),
-                        ),
-                      ),
-                    );
-                  }).toList(),
-                ),
-              ),
-              const SizedBox(height: 8),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: _timelineData.map((d) {
-                  return Text(d.$1, style: TextStyle(fontSize: 10, color: theme.disabledColor));
-                }).toList(),
-              ),
-            ],
-          ),
-        ),
-      ],
-    );
-  }
+  // Widget _timelineSection(ThemeData theme) {
+  //   return Column(
+  //     crossAxisAlignment: CrossAxisAlignment.start,
+  //     children: [
+  //       const SectionLabel("Today's Timeline"),
+  //       const SizedBox(height: 6),
+  //       AppCard(
+  //         padding: const EdgeInsets.all(16),
+  //         child: Column(
+  //           children: [
+  //             SizedBox(
+  //               height: 80,
+  //               child: Row(
+  //                 crossAxisAlignment: CrossAxisAlignment.end,
+  //                 children: _timelineData.map((d) {
+  //                   final val = d.$2;
+  //                   return Expanded(
+  //                     child: Padding(
+  //                       padding: const EdgeInsets.symmetric(horizontal: 4),
+  //                       child: FractionallySizedBox(
+  //                         heightFactor: val / 100,
+  //                         alignment: Alignment.bottomCenter,
+  //                         child: Container(
+  //                           decoration: BoxDecoration(
+  //                             color: val > 80 ? const Color(0xFFFF9800) : const Color(0xFF60A5FA),
+  //                             borderRadius: const BorderRadius.vertical(top: Radius.circular(5)),
+  //                           ),
+  //                         ),
+  //                       ),
+  //                     ),
+  //                   );
+  //                 }).toList(),
+  //               ),
+  //             ),
+  //             const SizedBox(height: 8),
+  //             Row(
+  //               mainAxisAlignment: MainAxisAlignment.spaceBetween,
+  //               children: _timelineData.map((d) {
+  //                 return Text(d.$1, style: TextStyle(fontSize: 10, color: theme.disabledColor));
+  //               }).toList(),
+  //             ),
+  //           ],
+  //         ),
+  //       ),
+  //     ],
+  //   );
+  // }
 
   Widget _metricRow(String label, String value, ThemeData theme) {
     return Row(
