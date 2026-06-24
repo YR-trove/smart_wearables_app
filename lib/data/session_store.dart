@@ -16,17 +16,18 @@ class SessionStore extends ChangeNotifier {
   })  : _sessionDao = sessionDao ?? SessionDao(),
         _userDao    = userDao    ?? UserDao();
 
-  // ─── Core state ─────────────────────────────────────────────────────────────
+  // ─── Core state ──────────────────────────────────────────────────────────────
 
   UserProfile?      _currentUser;
   SessionModel?     _activeSession;
   UnifiedTelemetry? _latestTelemetry;
   DateTime?         _sessionStartTime;
 
-  UserProfile?      get currentUser   => _currentUser;
-  SessionModel?     get activeSession => _activeSession;
-  UnifiedTelemetry? get latestTelemetry => _latestTelemetry;
+  UserProfile?      get currentUser      => _currentUser;
+  SessionModel?     get activeSession    => _activeSession;
+  UnifiedTelemetry? get latestTelemetry  => _latestTelemetry;
   DateTime?         get sessionStartTime => _sessionStartTime;
+
   Duration get elapsed {
     if (_sessionStartTime == null) return Duration.zero;
     return DateTime.now().difference(_sessionStartTime!);
@@ -46,27 +47,28 @@ class SessionStore extends ChangeNotifier {
   double get distanceKm     => _distanceKm;
   double get totalKcal      => _totalKcal;
 
-  // ─── Audio Accumulators ──────────────────────────────────────────────────────
-  double noiseDbSpl = 0.0;
-  double noiseDbfs  = 0.0;
-
   String get activityLabel => switch (_activityState) {
     1 => 'Walking',
     2 => 'Running',
     _ => 'Idle',
   };
 
-  // ─── Light / photobiology accumulators ──────────────────────────────────────
+  // ─── Audio — single source of truth via _latestTelemetry ───────────────────
+  // Read from the model directly; no duplicate accumulator fields.
+
+  double get latestNoiseDbSpl => _latestTelemetry?.noiseDbSpl.toDouble() ?? 0.0;
+  double get latestNoiseDbFs  => _latestTelemetry?.noiseDbFs.toDouble()  ?? 0.0;
+
+  // ─── Light / photobiology accumulators ─────────────────────────────────────
 
   int    _sunlightSeconds       = 0;
   int    _nightBlueLightSeconds = 0;
   double _currentUvIndex        = 0.0;
   String _skinBurnRisk          = 'Low';
-  int    _circadianScore        = 100;
+  int    _circadianScore        = 100; // range: [0, 100]
   double _currentBlueRatio      = 0.0;
   int    _colorTemp             = 0;
-  double clearChannel           = 0;
-  int    _noiseDbSpl            = 0;
+  double _clearChannel          = 0.0;
 
   int    get sunlightSeconds       => _sunlightSeconds;
   int    get nightBlueLightSeconds => _nightBlueLightSeconds;
@@ -75,7 +77,7 @@ class SessionStore extends ChangeNotifier {
   int    get circadianScore        => _circadianScore;
   double get currentBlueRatio      => _currentBlueRatio;
   int    get colorTemp             => _colorTemp;
-  int    get noiseDbSpl            => _noiseDbSpl;
+  double get clearChannel          => _clearChannel;
 
   SessionDao get sessionDao => _sessionDao;
 
@@ -86,18 +88,19 @@ class SessionStore extends ChangeNotifier {
   }
 
   // ─── Dev Dashboard Historical Buffers ───────────────────────────────────────
-  
-  static const int _maxBufferSize = 60; // Holds 60 seconds of rolling history
-  final List<double> _stepsHistory = [];
-  final List<double> _cadenceHistory = [];
-  final List<double> _activityHistory = [];
-  final List<double> _uvHistory = [];
+
+  static const int _maxBufferSize = 60; // 60 seconds of rolling history
+
+  final List<double> _stepsHistory         = [];
+  final List<double> _cadenceHistory       = [];
+  final List<double> _activityHistory      = [];
+  final List<double> _uvHistory            = [];
   final List<double> _blueIntensityHistory = [];
-  final List<double> _blueRatioHistory = [];
-  final List<double> _colorTempHistory = [];
-  final List<double> _clearChannelHistory = [];
-  final List<int>    _noiseDbSplHistory = [];
-  // Exposes a unified historical structure directly to your custom oscilloscope painter
+  final List<double> _blueRatioHistory     = [];
+  final List<double> _colorTempHistory     = [];
+  final List<double> _clearChannelHistory  = [];
+  final List<double> _noiseDbSplHistory    = [];
+
   List<List<double>> get devMetricsHistory => [
     _stepsHistory,
     _cadenceHistory,
@@ -109,7 +112,7 @@ class SessionStore extends ChangeNotifier {
     _clearChannelHistory,
   ];
 
-  // ─── Initialisation — crash recovery ────────────────────────────────────────
+  // ─── Initialisation — crash recovery ──────────────────────────────────────────
 
   Future<void> init() async {
     final orphan = await _sessionDao.findIncompleteSession();
@@ -119,7 +122,7 @@ class SessionStore extends ChangeNotifier {
     }
   }
 
-  // ─── User management ────────────────────────────────────────────────────────
+  // ─── User management ─────────────────────────────────────────────────────
 
   Future<List<UserProfile>> getAllUsers() => _userDao.findAll();
 
@@ -145,7 +148,7 @@ class SessionStore extends ChangeNotifier {
     notifyListeners();
   }
 
-  // ─── Session lifecycle ───────────────────────────────────────────────────────
+  // ─── Session lifecycle ────────────────────────────────────────────────────
 
   Future<void> startSession(String deviceId) async {
     assert(_currentUser != null, 'A user must be selected before starting a session.');
@@ -178,17 +181,16 @@ class SessionStore extends ChangeNotifier {
     _activityState  = 0;
     _distanceKm     = 0.0;
     _totalKcal      = 0.0;
+
     _sunlightSeconds       = 0;
     _nightBlueLightSeconds = 0;
     _currentUvIndex        = 0.0;
     _skinBurnRisk          = 'Low';
-    _circadianScore        = 100;
+    _circadianScore        = 100; // range: [0, 100]
     _currentBlueRatio      = 0.0;
     _colorTemp             = 0;
-    clearChannel           = 0;
-    _noiseDbSpl            = 0;
+    _clearChannel          = 0.0;
 
-    // Clear dev history on session reset
     _stepsHistory.clear();
     _cadenceHistory.clear();
     _activityHistory.clear();
@@ -200,40 +202,20 @@ class SessionStore extends ChangeNotifier {
     _noiseDbSplHistory.clear();
   }
 
-  // ─── Unified 1 Hz packet handler ────────────────────────────────────────────
+  // ─── Unified 1 Hz packet handler ───────────────────────────────────────────
+  // Receives an already-parsed UnifiedTelemetry object from MainShell.
+  // No raw-byte parsing here — byte offsets live exclusively in
+  // UnifiedTelemetry.fromFrame().
 
-  Future<void> onUnifiedPacket(List<int> rawData) async {
+  Future<void> onUnifiedPacket(UnifiedTelemetry packet) async {
     if (_activeSession == null) return;
 
-    final payload = Uint8List.fromList(rawData);
-    final bd      = ByteData.sublistView(payload);
-    final ts      = DateTime.now();
+    unawaited(_sessionDao.insertUnified(packet));
 
-    final row = UnifiedTelemetry(
-      sessionId:          _activeSession!.id!,
-      tsMs:               ts.millisecondsSinceEpoch,
-      stepCount:          bd.getUint16(2, Endian.little),
-      cadence:            bd.getUint8(4),
-      activityState:      bd.getUint8(5),
-      uvRisk:             bd.getUint16(6, Endian.little) / 32767.0,
-      blueLightIntensity: bd.getUint8(8),
-      blueLightRatio:     bd.getUint16(10, Endian.little) / 32767.0, 
-      colorTemp:          bd.getUint16(12, Endian.little), 
-      clearChannel:       bd.getUint16(14, Endian.little), 
-      noiseDbSpl:         bd.getUint8(17), // uint8_t (Unsigned)
-    );
-
-    noiseDbfs  = bd.getInt8(16).toDouble();
-    noiseDbSpl = payload[17].toDouble();
-
-    unawaited(_sessionDao.insertUnified(row));
-    
-    _latestTelemetry = row;
-    _updateFitnessMetrics(row);
-    _updateLightMetrics(row, ts);
-    
-    // Process rolling historical entries for dev oscilloscope
-    _pushToDevHistory(row);
+    _latestTelemetry = packet;
+    _updateFitnessMetrics(packet);
+    _updateLightMetrics(packet, DateTime.fromMillisecondsSinceEpoch(packet.tsMs));
+    _pushToDevHistory(packet);
 
     notifyListeners();
   }
@@ -250,20 +232,20 @@ class SessionStore extends ChangeNotifier {
 
     final weightKg = _currentUser?.weightKg ?? 70.0;
     final met = switch (_activityState) {
-      2 => 5.0,  
-      1 => 3.5,  
-      _ => 0.0,  
+      2 => 5.0,
+      1 => 3.5,
+      _ => 0.0,
     };
     _totalKcal += (met * 3.5 * weightKg) / 12000.0;
   }
 
-  // ─── Light / photobiology metric derivation ──────────────────────────────────
+  // ─── Light / photobiology metric derivation ────────────────────────────────
 
   void _updateLightMetrics(UnifiedTelemetry r, DateTime ts) {
-    _currentBlueRatio    = r.blueLightRatio;
-    _colorTemp           = r.colorTemp.toInt();
-    clearChannel         = r.clearChannel.toDouble();
-    _currentUvIndex      = r.uvRisk * 11.0;
+    _currentBlueRatio = r.blueLightRatio;
+    _colorTemp        = r.colorTemp;
+    _clearChannel     = r.clearChannel.toDouble();
+    _currentUvIndex   = r.uvRisk * 11.0;
 
     if (r.clearChannel > 500 && r.colorTemp > 4500) {
       _sunlightSeconds++;
@@ -279,16 +261,17 @@ class SessionStore extends ChangeNotifier {
 
     if (ts.hour >= 19 && r.blueLightRatio > 0.35) {
       _nightBlueLightSeconds++;
+      // Decrement circadian score by 1 every 5 minutes of night blue-light
+      // exposure. Guarded at 0 — score range is [0, 100].
       if (_nightBlueLightSeconds % 300 == 0 && _circadianScore > 0) {
         _circadianScore -= 1;
       }
     }
   }
 
-  // ─── Dev Rolling History Management ──────────────────────────────────────────
+  // ─── Dev Rolling History Management ────────────────────────────────────────
 
   void _pushToDevHistory(UnifiedTelemetry r) {
-    // Keep internal memory bounded to prevent memory leaks over long sessions
     if (_stepsHistory.length >= _maxBufferSize) {
       _stepsHistory.removeAt(0);
       _cadenceHistory.removeAt(0);
@@ -301,16 +284,15 @@ class SessionStore extends ChangeNotifier {
       _noiseDbSplHistory.removeAt(0);
     }
 
-    // Append standard double telemetry data types
     _stepsHistory.add(r.stepCount.toDouble());
     _cadenceHistory.add(r.cadence.toDouble());
     _activityHistory.add(r.activityState.toDouble());
-    _uvHistory.add(r.uvRisk * 11.0); // Converted to direct UV Index
+    _uvHistory.add(r.uvRisk * 11.0);
     _blueIntensityHistory.add(r.blueLightIntensity.toDouble());
     _blueRatioHistory.add(r.blueLightRatio);
     _colorTempHistory.add(r.colorTemp.toDouble());
     _clearChannelHistory.add(r.clearChannel.toDouble());
-    _noiseDbSplHistory.add(r.noiseDbSpl); // Add mic data to history
+    _noiseDbSplHistory.add(r.noiseDbSpl.toDouble());
   }
 }
 
