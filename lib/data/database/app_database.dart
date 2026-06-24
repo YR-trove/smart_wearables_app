@@ -16,7 +16,7 @@ class AppDatabase {
     final path = join(await getDatabasesPath(), 'smart_wearables.db');
     return openDatabase(
       path,
-      version: 3,
+      version: 4,
       onCreate: _onCreate,
       onUpgrade: _onUpgrade,
       onConfigure: (db) async {
@@ -26,7 +26,7 @@ class AppDatabase {
   }
 
   // ---------------------------------------------------------------------------
-  // Schema v3 — full creation
+  // Schema v4 — full creation
   // ---------------------------------------------------------------------------
 
   Future<void> _onCreate(Database db, int version) async {
@@ -66,8 +66,17 @@ class AppDatabase {
       await db.execute('DROP TABLE IF EXISTS imu_data');
       await _createUnifiedTelemetry(db);
     }
-    
+
     if (oldVersion < 3) {
+      await db.execute('DROP TABLE IF EXISTS unified_telemetry');
+      await _createUnifiedTelemetry(db);
+    }
+
+    // v3 → v4: unified_telemetry DDL was correct but the Dart model was not
+    // emitting noise_db_fs, causing NOT NULL constraint violations on every
+    // insertUnified() call. Recreate the table so existing installs get the
+    // correct schema without stale constraint state.
+    if (oldVersion < 4) {
       await db.execute('DROP TABLE IF EXISTS unified_telemetry');
       await _createUnifiedTelemetry(db);
     }
