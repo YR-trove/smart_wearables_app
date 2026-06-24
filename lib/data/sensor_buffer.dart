@@ -5,12 +5,12 @@ class SensorBuffer extends ChangeNotifier {
   static const int _maxPoints = 150;
 
   // --- Metrics Mode Buffers (0x55) ---
-  final List<double> stepCountHistory = [];       
+  final List<double> stepCountHistory = [];
   final List<double> cadenceHistory = [];
-  final List<double> activityHistory = [];        
+  final List<double> activityHistory = [];
   final List<double> luxHistory = [];
-  final List<double> uvRiskHistory = [];          
-  final List<double> blueIntensityHistory = [];   
+  final List<double> uvRiskHistory = [];
+  final List<double> blueIntensityHistory = [];
   final List<double> blueRatioHistory = [];
   final List<double> colorTempHistory = [];
 
@@ -20,7 +20,8 @@ class SensorBuffer extends ChangeNotifier {
 
   // --- Raw Spectral & Mic Buffers (0x77) ---
   final List<double> f3 = [], rawClear = [];
-  final noiseDbSpl = [], noiseDbfs = [];
+  final List<double> noiseDbSpl = [];  // was untyped List — caused _append type error
+  final List<double> noiseDbfs  = [];  // was untyped List — caused _append type error
 
   void addMetrics({
     required double steps, required double cadence, required double activity,
@@ -30,7 +31,7 @@ class SensorBuffer extends ChangeNotifier {
     _append(stepCountHistory, steps); _append(cadenceHistory, cadence); _append(activityHistory, activity);
     _append(luxHistory, lux); _append(uvRiskHistory, uvRisk); _append(blueIntensityHistory, blueIntensity);
     _append(blueRatioHistory, blueRatio); _append(colorTempHistory, colorTemp);
-    notifyListeners(); 
+    notifyListeners();
   }
 
   void addRawAccel(double x, double y, double z) {
@@ -47,22 +48,30 @@ class SensorBuffer extends ChangeNotifier {
     _append(rawClear, clearVal); _append(f3, f3val);
     notifyListeners();
   }
-  
-  void addRawMic(int dbSpl, int dbFs) {
+
+  /// [dbSpl] — unsigned dB SPL (uint8 cast to double).
+  /// [dbFs]  — signed dBFS   (int8 cast to double).
+  /// Both arrive as double from ByteData getters in main_shell._onDevPacket.
+  void addRawMic(double dbSpl, double dbFs) {
     _append(noiseDbSpl, dbSpl); _append(noiseDbfs, dbFs);
     notifyListeners();
   }
-  
+
   void _append(List<double> list, double value) {
     list.add(value);
     if (list.length > _maxPoints) list.removeAt(0);
+  }
+
+  void dispose() {
+    clear();
+    super.dispose();
   }
 
   void clear() {
     stepCountHistory.clear(); cadenceHistory.clear(); activityHistory.clear();
     luxHistory.clear(); uvRiskHistory.clear(); blueIntensityHistory.clear();
     blueRatioHistory.clear(); colorTempHistory.clear();
-    
+
     accelX.clear(); accelY.clear(); accelZ.clear();
     gyroX.clear(); gyroY.clear(); gyroZ.clear();
     f3.clear(); rawClear.clear();
