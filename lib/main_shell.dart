@@ -129,10 +129,11 @@ class _MainShellState extends State<MainShell> {
       bd.getUint16(16, Endian.little).toDouble(), // clear
       bd.getUint16(14, Endian.little).toDouble(), // f3
     );
-    // Mic data for SensorBuffer comes exclusively from this 20 Hz path.
+    // frame[18] → uint8 dB SPL (int), bd.getInt8(19) → int8 dBFS (int).
+    // addRawMic accepts int directly — no .toDouble() needed here.
     _sensorBuffer.addRawMic(
-      frame[18].toDouble(),          // noiseDbSpl uint8
-      bd.getInt8(19).toDouble(),     // noiseDbFs  int8
+      frame[18],          // noiseDbSpl — uint8, int
+      bd.getInt8(19),     // noiseDbFs  — int8,  int
     );
   }
 
@@ -149,7 +150,6 @@ class _MainShellState extends State<MainShell> {
 
     switch (msgType) {
       case MsgType.unifiedState:
-        // Parse once here — canonical byte offsets live in UnifiedTelemetry.fromFrame().
         final sessionId = context.read<SessionStore>().activeSession?.id;
         if (sessionId == null) return;
 
@@ -159,7 +159,6 @@ class _MainShellState extends State<MainShell> {
           tsMs: DateTime.now().millisecondsSinceEpoch,
         );
 
-        // Feed UI buffer (charts).
         _sensorBuffer.addMetrics(
           steps:         packet.stepCount.toDouble(),
           cadence:       packet.cadence.toDouble(),
@@ -171,12 +170,9 @@ class _MainShellState extends State<MainShell> {
           colorTemp:     packet.colorTemp.toDouble(),
         );
 
-        // Persist + update domain state. 1 Hz mic values are available via
-        // SessionStore.latestNoiseDbSpl / latestNoiseDbFs — not from SensorBuffer.
         context.read<SessionStore>().onUnifiedPacket(packet);
 
       case MsgType.har:
-        // TODO: route HAR activity recognition packet.
         debugPrint('MainShell: HAR packet received (not yet handled)');
 
       case MsgType.end:
@@ -201,7 +197,7 @@ class _MainShellState extends State<MainShell> {
   void _onDevModeChanged(bool enabled) {
     setState(() {
       _devMode    = enabled;
-      _currentTab = AppTab.fitness; // always land on Fitness when toggling
+      _currentTab = AppTab.fitness;
       if (widget.stream != null) widget.stream!.setMcuMode(enabled);
     });
   }

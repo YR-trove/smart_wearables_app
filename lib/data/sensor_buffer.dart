@@ -5,32 +5,37 @@ class SensorBuffer extends ChangeNotifier {
   static const int _maxPoints = 150;
 
   // --- Metrics Mode Buffers (0x55) ---
-  final List<double> stepCountHistory = [];
-  final List<double> cadenceHistory = [];
-  final List<double> activityHistory = [];
-  final List<double> luxHistory = [];
-  final List<double> uvRiskHistory = [];
+  final List<double> stepCountHistory    = [];
+  final List<double> cadenceHistory      = [];
+  final List<double> activityHistory     = [];
+  final List<double> luxHistory          = [];
+  final List<double> uvRiskHistory       = [];
   final List<double> blueIntensityHistory = [];
-  final List<double> blueRatioHistory = [];
-  final List<double> colorTempHistory = [];
+  final List<double> blueRatioHistory    = [];
+  final List<double> colorTempHistory    = [];
 
   // --- Raw IMU Buffers (0x77) ---
   final List<double> accelX = [], accelY = [], accelZ = [];
-  final List<double> gyroX = [], gyroY = [], gyroZ = [];
+  final List<double> gyroX  = [], gyroY  = [], gyroZ  = [];
 
   // --- Raw Spectral & Mic Buffers (0x77) ---
   final List<double> f3 = [], rawClear = [];
-  final List<double> noiseDbSpl = [];  // was untyped List — caused _append type error
-  final List<double> noiseDbfs  = [];  // was untyped List — caused _append type error
+  final List<double> noiseDbSpl = [];
+  final List<double> noiseDbfs  = [];
 
   void addMetrics({
     required double steps, required double cadence, required double activity,
-    required double lux, required double uvRisk, required double blueIntensity,
+    required double lux,   required double uvRisk,  required double blueIntensity,
     required double blueRatio, required double colorTemp,
   }) {
-    _append(stepCountHistory, steps); _append(cadenceHistory, cadence); _append(activityHistory, activity);
-    _append(luxHistory, lux); _append(uvRiskHistory, uvRisk); _append(blueIntensityHistory, blueIntensity);
-    _append(blueRatioHistory, blueRatio); _append(colorTempHistory, colorTemp);
+    _append(stepCountHistory,     steps);
+    _append(cadenceHistory,       cadence);
+    _append(activityHistory,      activity);
+    _append(luxHistory,           lux);
+    _append(uvRiskHistory,        uvRisk);
+    _append(blueIntensityHistory, blueIntensity);
+    _append(blueRatioHistory,     blueRatio);
+    _append(colorTempHistory,     colorTemp);
     notifyListeners();
   }
 
@@ -49,11 +54,12 @@ class SensorBuffer extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// [dbSpl] — unsigned dB SPL (uint8 cast to double).
-  /// [dbFs]  — signed dBFS   (int8 cast to double).
-  /// Both arrive as double from ByteData getters in main_shell._onDevPacket.
-  void addRawMic(double dbSpl, double dbFs) {
-    _append(noiseDbSpl, dbSpl); _append(noiseDbfs, dbFs);
+  /// Receives raw BLE integer values and stores them in the double buffers.
+  /// [dbSpl] — uint8 dB SPL  (0‥255), as delivered by frame[N] (int).
+  /// [dbFs]  — int8  dBFS   (-128‥127), as delivered by bd.getInt8(N) (int).
+  void addRawMic(int dbSpl, int dbFs) {
+    _append(noiseDbSpl, dbSpl.toDouble());
+    _append(noiseDbfs,  dbFs.toDouble());
     notifyListeners();
   }
 
@@ -62,6 +68,7 @@ class SensorBuffer extends ChangeNotifier {
     if (list.length > _maxPoints) list.removeAt(0);
   }
 
+  @override
   void dispose() {
     clear();
     super.dispose();
@@ -73,7 +80,7 @@ class SensorBuffer extends ChangeNotifier {
     blueRatioHistory.clear(); colorTempHistory.clear();
 
     accelX.clear(); accelY.clear(); accelZ.clear();
-    gyroX.clear(); gyroY.clear(); gyroZ.clear();
+    gyroX.clear();  gyroY.clear();  gyroZ.clear();
     f3.clear(); rawClear.clear();
     noiseDbSpl.clear(); noiseDbfs.clear();
 
