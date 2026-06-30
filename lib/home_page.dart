@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:smart_wearables_app/data/sensor_buffer.dart';
 import 'package:smart_wearables_app/connection/stream.dart';
+
 class HomePage extends StatefulWidget {
   final String title;
   final SensorBuffer buffer;
@@ -33,16 +34,19 @@ class _HomePageState extends State<HomePage> {
         title: Text('Developer Dashboard', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600, color: theme.colorScheme.onSurface)),
         centerTitle: true,
       ),
+      // Restored your original scrolling structure
       body: AnimatedBuilder(
         animation: widget.buffer, 
         builder: (context, _) {
           return ListView(
             padding: const EdgeInsets.all(16),
-            children: _isRawMode ? _buildRawCharts(isDark) : _buildMetricsCharts(isDark),
+            children: [
+              if (_isRawMode) ..._buildRawCharts(isDark) else ..._buildMetricsCharts(isDark),
+              const SizedBox(height: 80),
+            ],
           );
         },
       ),
-      // Replace your existing floatingActionButton with this:
       floatingActionButton: widget.stream != null
           ? FloatingActionButton.extended(
               onPressed: _toggleMode,
@@ -51,8 +55,8 @@ class _HomePageState extends State<HomePage> {
               backgroundColor: _isRawMode ? const Color(0xFFEF4444) : theme.colorScheme.primary,
               foregroundColor: Colors.white,
             )
-          : null, floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat 
-          // Hides the button entirely if disconnected!,
+          : null, 
+      floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
     );
   }
 
@@ -62,59 +66,58 @@ class _HomePageState extends State<HomePage> {
       _ChartCard(
         title: 'Step Count (Cumulative)', 
         multiData: [widget.buffer.stepCountHistory], 
-        colors: [const Color(0xFFF472B6)], // Pink
+        colors: [const Color(0xFFF472B6)], 
         isDark: isDark,
       ),
       const SizedBox(height: 16),
       _ChartCard(
         title: 'Activity State (0=Idle, 1=Walk, 2=Run)', 
         multiData: [widget.buffer.activityHistory], 
-        colors: [const Color(0xFF8B5CF6)], // Purple
+        colors: [const Color(0xFF8B5CF6)], 
         isDark: isDark,
       ),
       const SizedBox(height: 16),
       _ChartCard(
         title: 'Step Cadence (Steps/min)', 
         multiData: [widget.buffer.cadenceHistory], 
-        colors: [const Color(0xFF10B981)], // Green
+        colors: [const Color(0xFF10B981)], 
         isDark: isDark,
       ),
       const SizedBox(height: 16),
       _ChartCard(
         title: 'Illuminance Proxy (Clear Channel)', 
         multiData: [widget.buffer.luxHistory], 
-        colors: [const Color(0xFFFFCA28)], // Yellow
+        colors: [const Color(0xFFFFCA28)], 
         isDark: isDark,
       ),
       const SizedBox(height: 16),
       _ChartCard(
         title: 'UV Risk Index', 
         multiData: [widget.buffer.uvRiskHistory], 
-        colors: [const Color(0xFFEF4444)], // Red
+        colors: [const Color(0xFFEF4444)], 
         isDark: isDark,
       ),
       const SizedBox(height: 16),
       _ChartCard(
         title: 'Blue Light Intensity', 
         multiData: [widget.buffer.blueIntensityHistory], 
-        colors: [const Color(0xFF2563EB)], // Deep Blue
+        colors: [const Color(0xFF2563EB)], 
         isDark: isDark,
       ),
       const SizedBox(height: 16),
       _ChartCard(
         title: 'Blue Light Ratio (Q15)', 
         multiData: [widget.buffer.blueRatioHistory], 
-        colors: [const Color(0xFF06B6D4)], // Cyan
+        colors: [const Color(0xFF06B6D4)], 
         isDark: isDark,
       ),
       const SizedBox(height: 16),
       _ChartCard(
         title: 'Color Temperature (K)', 
         multiData: [widget.buffer.colorTempHistory], 
-        colors: [const Color(0xFFF59E0B)], // Amber
+        colors: [const Color(0xFFF59E0B)], 
         isDark: isDark,
       ),
-      const SizedBox(height: 80), // Padding so the FAB doesn't cover the bottom chart
     ];
   }
 
@@ -137,37 +140,30 @@ class _HomePageState extends State<HomePage> {
       const SizedBox(height: 16),
       _ChartCard(
         title: 'Raw Light (F3 = Cyan, Clear = Grey)',
-        multiData: [
-          widget.buffer.f3,       
-          widget.buffer.rawClear  
-        ],
-        colors: [
-          const Color(0xFF06B6D4), 
-          isDark ? Colors.white70 : Colors.black54
-        ],
+        multiData: [widget.buffer.f3, widget.buffer.rawClear],
+        colors: [const Color(0xFF06B6D4), isDark ? Colors.white70 : Colors.black54],
         isDark: isDark,
       ),
       const SizedBox(height: 16),
       _ChartCard(
         title: 'Microphone SPL (0 to 120 dB)',
         multiData: [widget.buffer.noiseDbSpl], 
-        colors: [const Color(0xFFF59E0B)], // Amber
+        colors: [const Color(0xFFF59E0B)], 
         isDark: isDark,
       ),
       const SizedBox(height: 16),
       _ChartCard(
         title: 'Microphone dBFS (-100 to 0 dB)',
         multiData: [widget.buffer.noiseDbfs],
-        colors: [const Color(0xFF8B5CF6)],  // Purple
+        colors: [const Color(0xFF8B5CF6)],
         isDark: isDark,
       ),
-      const SizedBox(height: 80), // Padding for the floating button
     ];
   }
 }
 
 // ============================================================================
-// High-Performance Multi-Line Custom Painter
+// Your ORIGINAL High-Performance Painter (Restored)
 // ============================================================================
 
 class _ChartCard extends StatelessWidget {
@@ -212,7 +208,6 @@ class _ChartCard extends StatelessWidget {
   }
 }
 
-
 class _MultiOscilloscopePainter extends CustomPainter {
   final List<List<double>> multiData;
   final List<Color> colors;
@@ -222,21 +217,27 @@ class _MultiOscilloscopePainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    if (multiData.isEmpty || multiData[0].isEmpty) return;
-
-    // 1. Calculate scaling
+    // 1. Calculate scaling exactly how you had it
     double maxVal = -double.infinity;
     double minVal = double.infinity;
     for (var series in multiData) {
+      if (series.isEmpty) continue; // Keep it from crashing
       for (var val in series) {
         if (val > maxVal) maxVal = val;
         if (val < minVal) minVal = val;
       }
     }
-    if (maxVal == minVal) { maxVal += 1; minVal -= 1; }
-    final range = maxVal - minVal;
     
-    // Reserve space for axis labels
+    // Default grid if empty
+    if (maxVal == -double.infinity || minVal == double.infinity) {
+      maxVal = 10.0;
+      minVal = 0.0;
+    } else if (maxVal == minVal) { 
+      maxVal += 1; 
+      minVal -= 1; 
+    }
+    
+    final range = maxVal - minVal;
     final chartHeight = size.height - 20;
     final chartWidth = size.width - 40;
 
@@ -248,23 +249,25 @@ class _MultiOscilloscopePainter extends CustomPainter {
       final y = size.height - (chartHeight * (i / 4));
       canvas.drawLine(Offset(0, y), Offset(chartWidth, y), gridPaint);
       
-      // Paint Y-Axis Value
       final val = minVal + (range * (i / 4));
       final textSpan = TextSpan(text: val.toStringAsFixed(1), style: textStyle);
       final textPainter = TextPainter(text: textSpan, textDirection: TextDirection.ltr)..layout();
       textPainter.paint(canvas, Offset(chartWidth + 5, y - 5));
     }
 
-    // 3. Draw Lines
+    // 3. Draw Lines exactly as you originally wrote them
     for (int lineIdx = 0; lineIdx < multiData.length; lineIdx++) {
       final data = multiData[lineIdx];
+      if (data.isEmpty) continue; // Skip empty arrays without killing the whole painter
+
       final path = Path();
-      final stepX = chartWidth / (data.length - 1);
+      final stepX = data.length > 1 ? chartWidth / (data.length - 1) : chartWidth;
 
       for (int i = 0; i < data.length; i++) {
         final x = i * stepX;
         final normalizedY = (data[i] - minVal) / range;
         final y = size.height - (normalizedY * chartHeight);
+        
         if (i == 0) {
           path.moveTo(x, y);
         } else {

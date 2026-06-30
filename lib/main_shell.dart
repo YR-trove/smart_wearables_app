@@ -1,10 +1,11 @@
 import 'dart:async';
-import 'dart:typed_data'; 
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:smart_wearables_app/connection/connection_page.dart';
 import 'package:smart_wearables_app/connection/message_type.dart';
 import 'package:smart_wearables_app/connection/stream.dart';
+import 'package:smart_wearables_app/data/models/unified_telemetry.dart';
 import 'package:smart_wearables_app/data/session_store.dart';
 import 'package:smart_wearables_app/data/sensor_buffer.dart';
 import 'package:smart_wearables_app/home_page.dart';
@@ -13,16 +14,18 @@ import 'package:smart_wearables_app/pages/light_page.dart';
 import 'package:smart_wearables_app/pages/settings_page.dart';
 import 'package:smart_wearables_app/pages/stress_page.dart';
 
+// ---------------------------------------------------------------------------
+// Navigation tabs — enum-based so toggling dev mode never causes index drift.
+// ---------------------------------------------------------------------------
+
+enum AppTab { devData, fitness, light, stress, settings }
+
 /// Top-level shell shown while a BLE device is connected (or offline).
 class MainShell extends StatefulWidget {
   final MyStream? stream;
-  final String? deviceId;
+  final String?   deviceId;
 
-  const MainShell({
-    super.key,
-    this.stream,
-    this.deviceId,
-  });
+  const MainShell({super.key, this.stream, this.deviceId});
 
   @override
   State<MainShell> createState() => _MainShellState();
@@ -30,22 +33,20 @@ class MainShell extends StatefulWidget {
 
 class _MainShellState extends State<MainShell> {
   StreamSubscription<List<int>>? _sub;
-  StreamSubscription<List<int>>? _devSub; // Separate high-speed subscription
-  
-  int _pageIndex = 0;
-  bool _devMode = false;
+  StreamSubscription<List<int>>? _devSub;
+
+  AppTab _currentTab = AppTab.fitness;
+  bool   _devMode    = false;
 
   final SensorBuffer _sensorBuffer = SensorBuffer();
-  final List<int> _rxBuffer = [];
+  final List<int>    _rxBuffer     = [];
 
   @override
   void initState() {
     super.initState();
     if (widget.stream != null && widget.deviceId != null) {
       _startSession();
-      _sub = widget.stream!.controller.stream.listen(_onPacket);
-      
-      // Listen to the high-frequency Dev Mode stream
+      _sub    = widget.stream!.controller.stream.listen(_onPacket);
       _devSub = widget.stream!.controllerDevMode.stream.listen(_onDevPacket);
     }
   }
@@ -53,7 +54,7 @@ class _MainShellState extends State<MainShell> {
   @override
   void dispose() {
     _sub?.cancel();
-    _devSub?.cancel(); // Clean up the dev stream subscription
+    _devSub?.cancel();
     if (widget.stream != null) {
       context.read<SessionStore>()
           .endSession()
@@ -69,7 +70,6 @@ class _MainShellState extends State<MainShell> {
 
   void _startSession() {
     if (widget.deviceId == null) return;
-
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       try {
         await context.read<SessionStore>().startSession(widget.deviceId!);
@@ -81,7 +81,7 @@ class _MainShellState extends State<MainShell> {
   }
 
   // ---------------------------------------------------------------------------
-  // Packet Assembly & Fragmentation Handler — 1 Hz unified telemetry
+  // Packet assembly — 1 Hz unified telemetry
   // ---------------------------------------------------------------------------
 
   void _onPacket(List<int> data) {
@@ -90,19 +90,16 @@ class _MainShellState extends State<MainShell> {
     while (_rxBuffer.length >= 20) {
       final startIndex = _rxBuffer.indexOf(0x7B);
 
-      if (startIndex == -1) {
-        _rxBuffer.clear();
-        return;
-      }
+      if (startIndex == -1) { _rxBuffer.clear(); return; }
 
       if (startIndex > 0) {
         _rxBuffer.removeRange(0, startIndex);
-        if (_rxBuffer.length < 20) return; 
+        if (_rxBuffer.length < 20) return;
       }
 
       if (_rxBuffer[19] == 0x7D) {
         final validFrame = _rxBuffer.sublist(0, 20);
-        _rxBuffer.removeRange(0, 20); 
+        _rxBuffer.removeRange(0, 20);
         _routeFrame(validFrame);
       } else {
         _rxBuffer.removeAt(0);
@@ -111,90 +108,98 @@ class _MainShellState extends State<MainShell> {
   }
 
   // ---------------------------------------------------------------------------
-  // High-Speed 20Hz Binary Unpacker for Dev Mode
+  // High-speed 20 Hz binary unpacker — dev mode only
   // ---------------------------------------------------------------------------
+
   void _onDevPacket(List<int> frame) {
     if (frame.length < 20) return;
-
-    // Convert to Little Endian ByteData view
     final bd = ByteData.sublistView(Uint8List.fromList(frame));
 
-    // Unpack fields matching your C-struct sizing rules
-    // final int counter   = frame[1];
-    final double accX   = bd.getInt16(2, Endian.little).toDouble();
-    final double accY   = bd.getInt16(4, Endian.little).toDouble();
-    final double accZ   = bd.getInt16(6, Endian.little).toDouble();
-    
-    final double gyroX  = bd.getInt16(8, Endian.little).toDouble();
-    final double gyroY  = bd.getInt16(10, Endian.little).toDouble();
-    final double gyroZ  = bd.getInt16(12, Endian.little).toDouble();
-    
-    final double lightF3    = bd.getUint16(14, Endian.little).toDouble();
-    final double lightClear = bd.getUint16(16, Endian.little).toDouble();
-
-    // 4. Audio (Offsets 18 & 19)
-    final double noiseDbSpl = frame[18].toDouble();
-    final double noiseDbFs  = bd.getInt8(19).toDouble();
-
-    // Push values directly into the active UI buffer pipelines
-    _sensorBuffer.addRawAccel(accX, accY, accZ);
-    _sensorBuffer.addRawGyro(gyroX, gyroY, gyroZ);
-    
-    _sensorBuffer.addRawMic(noiseDbSpl, noiseDbFs);
-    _sensorBuffer.addRawLight(lightClear, lightF3);
-
+    _sensorBuffer.addRawAccel(
+      bd.getInt16(2,  Endian.little).toDouble(),
+      bd.getInt16(4,  Endian.little).toDouble(),
+      bd.getInt16(6,  Endian.little).toDouble(),
+    );
+    _sensorBuffer.addRawGyro(
+      bd.getInt16(8,  Endian.little).toDouble(),
+      bd.getInt16(10, Endian.little).toDouble(),
+      bd.getInt16(12, Endian.little).toDouble(),
+    );
+    _sensorBuffer.addRawLight(
+      bd.getUint16(16, Endian.little).toDouble(), // clear
+      bd.getUint16(14, Endian.little).toDouble(), // f3
+    );
+    // frame[18] → uint8 dB SPL (int), bd.getInt8(19) → int8 dBFS (int).
+    // addRawMic accepts int directly — no .toDouble() needed here.
+    _sensorBuffer.addRawMic(
+      frame[18],          // noiseDbSpl — uint8, int
+      bd.getInt8(19),     // noiseDbFs  — int8,  int
+    );
   }
 
   // ---------------------------------------------------------------------------
-  // Verified Frame Router
+  // Verified frame router — 1 Hz path
   // ---------------------------------------------------------------------------
 
   void _routeFrame(List<int> frame) {
     final msgType = MsgType.fromByte(frame[1]);
+    if (msgType == null) {
+      debugPrint('MainShell: unknown msg type 0x${frame[1].toRadixString(16).toUpperCase()}');
+      return;
+    }
 
-    debugPrint('Rx Frame Type: 0x${frame[1].toRadixString(16).toUpperCase()}');
-    
-    if (msgType == null) return;
+    switch (msgType) {
+      case MsgType.unifiedState:
+        final sessionId = context.read<SessionStore>().activeSession?.id;
+        if (sessionId == null) return;
 
- 
-    context.read<SessionStore>().onUnifiedPacket(frame);
+        final packet = UnifiedTelemetry.fromFrame(
+          frame,
+          sessionId: sessionId,
+          tsMs: DateTime.now().millisecondsSinceEpoch,
+        );
 
-    debugPrint('MainShell: Got 0x55 packet! Cadence: ${frame[4]}');
-    
-    final bd = ByteData.sublistView(Uint8List.fromList(frame));
-    // --- 1. Kinematics (Unchanged) ---
-    // Indexes: [2, 3], 4, 5
-    final steps        = bd.getUint16(2, Endian.little).toDouble(); 
-    final cadence      = frame[4].toDouble();
-    final activity     = frame[5].toDouble();
-    
-    // --- 2. Light Metrics (FIXED ALIGNMENT) ---
-    // Indexes: [6, 7], 8, [9, 10], [11, 12], [13, 14]
-    final uvRisk        = bd.getUint16(6, Endian.little).toDouble();
-    final blueIntensity = frame[8].toDouble(); //  Read as 1 byte (uint8)
-    final blueRatio     = bd.getUint16(10, Endian.little) / 32767.0;  // Shifted to index 9
-    final colorTemp     = bd.getUint16(12, Endian.little).toDouble();
-    final clearChannel  = bd.getUint16(14, Endian.little).toDouble(); // Shifted to index 13
-    
-    // --- 3. Audio Metrics (NEW) ---
-    // Indexes: 15, 16
-    final noiseDbfs     = bd.getInt8(16).toDouble();  // int8_t (Signed)
-    final noiseDbSpl    = frame[17].toDouble();       // uint8_t (Unsigned)
+        _sensorBuffer.addMetrics(
+          steps:         packet.stepCount.toDouble(),
+          cadence:       packet.cadence.toDouble(),
+          activity:      packet.activityState.toDouble(),
+          lux:           packet.clearChannel.toDouble(),
+          uvRisk:        packet.uvRisk * 11.0,
+          blueIntensity: packet.blueLightIntensity.toDouble(),
+          blueRatio:     packet.blueLightRatio,
+          colorTemp:     packet.colorTemp.toDouble(),
+        );
 
-    // Push to buffer
-    _sensorBuffer.addMetrics(
-      steps: steps, 
-      cadence: cadence, 
-      activity: activity,
-      lux: clearChannel, 
-      uvRisk: uvRisk,
-      blueIntensity: blueIntensity,
-      blueRatio: blueRatio,
-      colorTemp: colorTemp,
-    );
+        context.read<SessionStore>().onUnifiedPacket(packet);
 
-    _sensorBuffer.addRawMic(noiseDbSpl, noiseDbfs); // Add mic data to buffers
+      case MsgType.har:
+        debugPrint('MainShell: HAR packet received (not yet handled)');
 
+      case MsgType.end:
+        debugPrint('MainShell: end-of-stream packet received.');
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Helpers — nav
+  // ---------------------------------------------------------------------------
+
+  List<AppTab> get _activeTabs => [
+    if (_devMode) AppTab.devData,
+    AppTab.fitness,
+    AppTab.light,
+    AppTab.stress,
+    AppTab.settings,
+  ];
+
+  int get _pageIndex => _activeTabs.indexOf(_currentTab).clamp(0, _activeTabs.length - 1);
+
+  void _onDevModeChanged(bool enabled) {
+    setState(() {
+      _devMode    = enabled;
+      _currentTab = AppTab.fitness;
+      if (widget.stream != null) widget.stream!.setMcuMode(enabled);
+    });
   }
 
   // ---------------------------------------------------------------------------
@@ -204,57 +209,40 @@ class _MainShellState extends State<MainShell> {
   @override
   Widget build(BuildContext context) {
     final isConnected = widget.stream != null;
+    final tabs = _activeTabs;
 
-    final screens = <Widget>[
-      if (_devMode) HomePage(title: 'Raw Data (Dev)', buffer: _sensorBuffer, stream: widget.stream),
-      const FitnessPage(),
-      const LightPage(),
-      const StressPage(),
-      SettingsPage(
-        devMode: _devMode,
-        onDevModeChanged: (v) {
-          setState(() {
-            _devMode = v;
-            if (_devMode) {
-              _pageIndex++;
-              // Send command to flip hardware microcontroller into RAW mode
-              if (widget.stream != null) {
-                widget.stream!.setMcuMode(true);
-              }
-            } else {
-              _pageIndex--;
-              if (widget.stream != null) {
-                widget.stream!.setMcuMode(false);
-              }
-            }
-          });
-        },
-      ),
-    ];
+    final screens = tabs.map((tab) => switch (tab) {
+      AppTab.devData  => HomePage(title: 'Raw Data (Dev)', buffer: _sensorBuffer, stream: widget.stream),
+      AppTab.fitness  => const FitnessPage(),
+      AppTab.light    => const LightPage(),
+      AppTab.stress   => const StressPage(),
+      AppTab.settings => SettingsPage(
+          devMode: _devMode,
+          onDevModeChanged: _onDevModeChanged,
+        ),
+    }).toList();
 
-    final destinations = <NavigationDestination>[
-      if (_devMode) const NavigationDestination(icon: Icon(Icons.developer_board), label: 'Dev Data'),
-      const NavigationDestination(icon: Icon(Icons.directions_run), label: 'Fitness'),
-      const NavigationDestination(icon: Icon(Icons.wb_sunny), label: 'Light'),
-      const NavigationDestination(icon: Icon(Icons.self_improvement), label: 'Stress'),
-      const NavigationDestination(icon: Icon(Icons.settings), label: 'Settings'),
-    ];
+    final destinations = tabs.map((tab) => switch (tab) {
+      AppTab.devData  => const NavigationDestination(icon: Icon(Icons.developer_board), label: 'Dev Data'),
+      AppTab.fitness  => const NavigationDestination(icon: Icon(Icons.directions_run),  label: 'Fitness'),
+      AppTab.light    => const NavigationDestination(icon: Icon(Icons.wb_sunny),         label: 'Light'),
+      AppTab.stress   => const NavigationDestination(icon: Icon(Icons.self_improvement), label: 'Stress'),
+      AppTab.settings => const NavigationDestination(icon: Icon(Icons.settings),         label: 'Settings'),
+    }).toList();
 
     return Scaffold(
       body: IndexedStack(
         index: _pageIndex,
         children: screens,
       ),
-        floatingActionButton: !isConnected
+      floatingActionButton: !isConnected
           ? FloatingActionButton.extended(
-              onPressed: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => const ConnectionPage(title: 'Connect your device!'),
-                  ),
-                );
-              },
+              onPressed: () => Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => const ConnectionPage(title: 'Connect your device!'),
+                ),
+              ),
               icon: const Icon(Icons.bluetooth_searching),
               label: const Text('Connect Glasses'),
               backgroundColor: Theme.of(context).colorScheme.primary,
@@ -263,7 +251,7 @@ class _MainShellState extends State<MainShell> {
           : null,
       bottomNavigationBar: NavigationBar(
         selectedIndex: _pageIndex,
-        onDestinationSelected: (i) => setState(() => _pageIndex = i),
+        onDestinationSelected: (i) => setState(() => _currentTab = _activeTabs[i]),
         destinations: destinations,
       ),
     );

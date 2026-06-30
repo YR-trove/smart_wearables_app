@@ -9,7 +9,7 @@ class LightSample {
   final double   uvRisk;              // normalised UV risk index (0.0–1.0)
   final double   blueLightIntensity;  // raw intensity (lux or ADC units)
   final double   blueLightRatio;      // fraction of blue in total spectrum (0–1)
-  final double   sunLikeIndex;        // circadian/sun-similarity score
+  final double   colorTemp;           // color temperature (K)
   final double   metric1;             // reserved
 
   const LightSample({
@@ -18,7 +18,7 @@ class LightSample {
     required this.uvRisk,
     required this.blueLightIntensity,
     required this.blueLightRatio,
-    required this.sunLikeIndex,
+    required this.colorTemp,
     required this.metric1,
   });
   

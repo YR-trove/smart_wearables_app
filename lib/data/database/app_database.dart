@@ -1,14 +1,6 @@
 import 'package:sqflite/sqflite.dart';
 import 'package:path/path.dart';
 
-/// Singleton SQLite database helper.
-///
-/// Schema version history:
-///   v1 — multi-table: users, sessions, imu_data, sensor_snapshots,
-///         session_summary (fragmented high-frequency model).
-///   v2 — unified_telemetry replaces imu_data, sensor_snapshots,
-///         session_summary. MCU now performs all DSP; app stores 1 Hz
-///         fused snapshots only.
 class AppDatabase {
   AppDatabase._();
   static final AppDatabase instance = AppDatabase._();
@@ -24,7 +16,7 @@ class AppDatabase {
     final path = join(await getDatabasesPath(), 'smart_wearables.db');
     return openDatabase(
       path,
-      version: 2,
+      version: 4,
       onCreate: _onCreate,
       onUpgrade: _onUpgrade,
       onConfigure: (db) async {
@@ -34,7 +26,7 @@ class AppDatabase {
   }
 
   // ---------------------------------------------------------------------------
-  // Schema v2 — full creation
+  // Schema v4 — full creation
   // ---------------------------------------------------------------------------
 
   Future<void> _onCreate(Database db, int version) async {
@@ -64,16 +56,28 @@ class AppDatabase {
   }
 
   // ---------------------------------------------------------------------------
-  // Schema migration v1 → v2
+  // Schema migrations
   // ---------------------------------------------------------------------------
 
   Future<void> _onUpgrade(Database db, int oldVersion, int newVersion) async {
     if (oldVersion < 2) {
-      // Drop fragmented high-frequency tables from v1
       await db.execute('DROP TABLE IF EXISTS session_summary');
       await db.execute('DROP TABLE IF EXISTS sensor_snapshots');
       await db.execute('DROP TABLE IF EXISTS imu_data');
-      // Add unified 1 Hz telemetry table
+      await _createUnifiedTelemetry(db);
+    }
+
+    if (oldVersion < 3) {
+      await db.execute('DROP TABLE IF EXISTS unified_telemetry');
+      await _createUnifiedTelemetry(db);
+    }
+
+    // v3 → v4: unified_telemetry DDL was correct but the Dart model was not
+    // emitting noise_db_fs, causing NOT NULL constraint violations on every
+    // insertUnified() call. Recreate the table so existing installs get the
+    // correct schema without stale constraint state.
+    if (oldVersion < 4) {
+      await db.execute('DROP TABLE IF EXISTS unified_telemetry');
       await _createUnifiedTelemetry(db);
     }
   }
@@ -90,8 +94,10 @@ class AppDatabase {
         uv_risk               REAL    NOT NULL,
         blue_light_intensity  INTEGER NOT NULL,
         blue_light_ratio      REAL    NOT NULL,
-        sun_like_index        REAL    NOT NULL,
-        clear_channel         INTEGER NOT NULL
+        color_temp            INTEGER NOT NULL,
+        clear_channel         INTEGER NOT NULL,
+        noise_db_spl          INTEGER NOT NULL,
+        noise_db_fs           INTEGER NOT NULL
       )''');
     await db.execute(
         'CREATE INDEX idx_unified_ts ON unified_telemetry(session_id, ts_ms)');
