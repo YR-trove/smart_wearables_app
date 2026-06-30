@@ -307,7 +307,7 @@ String get blueLightExposureLevel {
     if (_currentSpeedKmh > 0 && _currentSpeedKmh < 3) {
         _focusConditionWalkingSpeed = 'ideal for focus';
       }else if (_currentSpeedKmh > 3) {
-        _focusConditionWalkingSpeed = 'to fast for ideal focus';
+        _focusConditionWalkingSpeed = 'too fast for ideal focus';
       }
     // Physical Activity stressfilter Break
     if (_currentSteps > 500 && _currentSteps < 3000) {

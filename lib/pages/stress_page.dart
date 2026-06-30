@@ -1,29 +1,34 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+import 'package:smart_wearables_app/data/session_store.dart';
 import '../app_theme.dart';
 
 class StressPage extends StatelessWidget {
   const StressPage({super.key});
 
-  static const _waveHeights = [40, 60, 45, 80, 50, 65, 35, 90, 55, 70, 40, 60, 45, 80, 50, 65, 40, 55, 85];
+  static const _waveHeights =; //[40, 60, 45, 80, 50, 65, 35, 90, 55, 70, 40, 60, 45, 80, 50, 65, 40, 55, 85];
   static const _timelineData = [
     ('8a', 45), ('10a', 55), ('12p', 68), ('2p', 94), ('4p', 72), ('6p', 65), ('8p', 50)
   ];
 
   @override
   Widget build(BuildContext context) {
+    // data from SessionStore
+    final store = context.watch<SessionStore>();
+
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: _buildAppBar(),
       body: ListView(
         padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
         children: [
-          _noiseHero(),
+          _noiseHero(store),
           const SizedBox(height: 20),
-          _summarySection(),
+          _summarySection(store),
           const SizedBox(height: 20),
-          _alertCards(),
+          _alertCards(store),
           const SizedBox(height: 20),
-          _earSafetySection(),
+          _earSafetySection(store),
           const SizedBox(height: 20),
           _timelineSection(),
           const SizedBox(height: 8),
@@ -39,25 +44,26 @@ class StressPage extends StatelessWidget {
       scrolledUnderElevation: 0,
       centerTitle: true,
       title: const Text(
-        'Stress & Noise',
+        //'Stress & Noise',
+        'Concentration Mode',
         style: TextStyle(fontSize: 17, fontWeight: FontWeight.w600, color: AppColors.primary),
       ),
     );
   }
 
-  Widget _noiseHero() {
+  Widget _noiseHero(SessionStore store) {
     return Column(
       children: [
-        const Text(
-          '68 dB',
-          style: TextStyle(
+        Text(
+          '${store.colorTemp.toStringAsFixed(0)} K', // realtime color temp
+          style: const TextStyle(
             fontSize: 42,
             fontWeight: FontWeight.bold,
             color: AppColors.primary,
           ),
         ),
-        const Text(
-          'Moderate',
+        Text(
+          store.focusConditionLight, // text from light treshold filter
           style: TextStyle(fontSize: 16, fontWeight: FontWeight.w500, color: AppColors.muted),
         ),
         const SizedBox(height: 16),
@@ -87,13 +93,13 @@ class StressPage extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const SectionLabel("Today's Summary"),
+        const SectionLabel("Concentration Summary"),
         const SizedBox(height: 6),
         AppCard(
           child: Column(
             children: [
-              CardRow(label: 'Exposure', value: '4h 22m'),
-              CardRow(label: 'Peak Noise', value: '94 dB at 2:15 PM', showDivider: false),
+              CardRow(label: 'Concentration Info', value: store.focusConditionAudio),
+              CardRow(label: 'Current Noise', value: '${store.currentDb} dB', showDivider: false),
             ],
           ),
         ),
@@ -101,7 +107,7 @@ class StressPage extends StatelessWidget {
     );
   }
 
-  Widget _alertCards() {
+  Widget _alertCards(SessionStore store) {
     return Column(
       children: [
         AppCard(
@@ -110,19 +116,19 @@ class StressPage extends StatelessWidget {
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Icon(Icons.warning_amber_rounded, color: AppColors.warning, size: 20),
+              const Icon(Icons.directions_walk, color: AppColors.warning, size: 20),
               const SizedBox(width: 10),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
-                  children: const [
-                    Text(
-                      'Prolonged Noise Warning',
+                  children: [
+                    const Text(
+                      'Walking Speed Analysis',
                       style: TextStyle(fontSize: 15, fontWeight: FontWeight.w500, color: AppColors.primary),
                     ),
                     SizedBox(height: 4),
                     Text(
-                      '2h 10m in >70 dB, Mild hearing fatigue',
+                      '${store.currentSpeedKmh.toStringAsFixed(1)} km/h: ${store.focusConditionWalkingSpeed}', // realtime speed and corresponding info
                       style: TextStyle(fontSize: 13, color: AppColors.muted),
                     ),
                   ],
@@ -138,19 +144,19 @@ class StressPage extends StatelessWidget {
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Icon(Icons.monitor_heart_outlined, color: AppColors.danger, size: 20),
+              const Icon(Icons.hotel_class_outlined, color: AppColors.danger, size: 20),
               const SizedBox(width: 10),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
-                  children: const [
-                    Text(
-                      'Stress Indicator',
+                  children: [
+                    const Text(
+                      'Brain Regeneration Status',
                       style: TextStyle(fontSize: 15, fontWeight: FontWeight.w500, color: AppColors.primary),
                     ),
                     SizedBox(height: 4),
                     Text(
-                      'High noise correlated with elevated stress',
+                      '${store.currentSteps} steps: ${store.focusConditionBreak}', // realtime steps and corresponding info
                       style: TextStyle(fontSize: 13, color: AppColors.muted),
                     ),
                   ],
@@ -163,11 +169,14 @@ class StressPage extends StatelessWidget {
     );
   }
 
-  Widget _earSafetySection() {
+  Widget _earSafetySection(SessionStore store) {
+    // percentage of in total 3000 steps
+    final stepProgress = (store.currentSteps / 3000).clamp(0.0, 1.0);
+    
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const SectionLabel('Ear Safety Limit'),
+        const SectionLabel('Activity Progress'),
         const SizedBox(height: 6),
         AppCard(
           padding: const EdgeInsets.all(16),
@@ -175,16 +184,16 @@ class StressPage extends StatelessWidget {
             children: [
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: const [
-                  Text('Daily Dose', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w500, color: AppColors.primary)),
-                  Text('62%', style: TextStyle(fontSize: 15, color: AppColors.muted)),
+                children: [
+                  const Text('Break Step Limit', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w500, color: AppColors.primary)),
+                  Text('${(stepProgress * 100).toStringAsFixed(0)}%', style: TextStyle(fontSize: 15, color: AppColors.muted)),
                 ],
               ),
               const SizedBox(height: 10),
-              const AppProgressBar(value: 0.62),
+              AppProgressBar(value: stepProgress),
               const SizedBox(height: 8),
               const Text(
-                '62% of safe limit (WHO 85 dB / 8h)',
+                '${store.currentSteps} of 3000 steps for ideal focus regeneration',
                 style: TextStyle(fontSize: 12, color: AppColors.muted),
                 textAlign: TextAlign.center,
               ),
@@ -199,7 +208,7 @@ class StressPage extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const SectionLabel("Today's Timeline"),
+        const SectionLabel("Today's Focus Timeline"),
         const SizedBox(height: 6),
         AppCard(
           padding: const EdgeInsets.all(16),
