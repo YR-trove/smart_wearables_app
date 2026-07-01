@@ -1,11 +1,11 @@
 import 'dart:async';
-import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:smart_wearables_app/connection/connection_page.dart';
 import 'package:smart_wearables_app/connection/message_type.dart';
 import 'package:smart_wearables_app/connection/stream.dart';
-import 'package:smart_wearables_app/data/models/unified_telemetry.dart';
+import 'package:smart_wearables_app/data/models/live_packets.dart';
+import 'package:smart_wearables_app/data/models/unified_telemetry.dart'; // TODO-REMOVE
 import 'package:smart_wearables_app/data/session_store.dart';
 import 'package:smart_wearables_app/data/sensor_buffer.dart';
 import 'package:smart_wearables_app/home_page.dart';
@@ -14,13 +14,11 @@ import 'package:smart_wearables_app/pages/light_page.dart';
 import 'package:smart_wearables_app/pages/settings_page.dart';
 import 'package:smart_wearables_app/pages/stress_page.dart';
 
-// ---------------------------------------------------------------------------
-// Navigation tabs — enum-based so toggling dev mode never causes index drift.
-// ---------------------------------------------------------------------------
+// ── Navigation tabs ───────────────────────────────────────────────────────────
 
 enum AppTab { devData, fitness, light, stress, settings }
 
-/// Top-level shell shown while a BLE device is connected (or offline).
+/// Top-level shell shown while a BLE device is connected.
 class MainShell extends StatefulWidget {
   final MyStream? stream;
   final String?   deviceId;
@@ -33,28 +31,31 @@ class MainShell extends StatefulWidget {
 
 class _MainShellState extends State<MainShell> {
   StreamSubscription<List<int>>? _sub;
-  StreamSubscription<List<int>>? _devSub;
+
+  /// TODO-REMOVE: _devSub was the 20 Hz dev-mode stream subscription.
+  /// Remove once dev-dashboard is updated / removed.
+  StreamSubscription<List<int>>? _devSub; // TODO-REMOVE
 
   AppTab _currentTab = AppTab.fitness;
   bool   _devMode    = false;
 
   final SensorBuffer _sensorBuffer = SensorBuffer();
-  final List<int>    _rxBuffer     = [];
 
   @override
   void initState() {
     super.initState();
     if (widget.stream != null && widget.deviceId != null) {
       _startSession();
-      _sub    = widget.stream!.controller.stream.listen(_onPacket);
-      _devSub = widget.stream!.controllerDevMode.stream.listen(_onDevPacket);
+      _sub = widget.stream!.controller.stream.listen(_onPacket);
+      // TODO-REMOVE: remove the _devSub line once dev-dashboard is updated.
+      _devSub = widget.stream!.controllerDevMode.stream.listen(_onDevPacket); // TODO-REMOVE
     }
   }
 
   @override
   void dispose() {
     _sub?.cancel();
-    _devSub?.cancel();
+    _devSub?.cancel(); // TODO-REMOVE
     if (widget.stream != null) {
       context.read<SessionStore>()
           .endSession()
@@ -64,9 +65,7 @@ class _MainShellState extends State<MainShell> {
     super.dispose();
   }
 
-  // ---------------------------------------------------------------------------
-  // Session start
-  // ---------------------------------------------------------------------------
+  // ── Session start ──────────────────────────────────────────────────────────
 
   void _startSession() {
     if (widget.deviceId == null) return;
@@ -80,109 +79,99 @@ class _MainShellState extends State<MainShell> {
     });
   }
 
-  // ---------------------------------------------------------------------------
-  // Packet assembly — 1 Hz unified telemetry
-  // ---------------------------------------------------------------------------
+  // ── Live-mode packet router ────────────────────────────────────────────────
+  // Dispatches bare fixed-size packets by their leading msg_type byte.
 
   void _onPacket(List<int> data) {
-    _rxBuffer.addAll(data);
+    if (data.isEmpty) return;
 
-    while (_rxBuffer.length >= 20) {
-      final startIndex = _rxBuffer.indexOf(0x7B);
-
-      if (startIndex == -1) { _rxBuffer.clear(); return; }
-
-      if (startIndex > 0) {
-        _rxBuffer.removeRange(0, startIndex);
-        if (_rxBuffer.length < 20) return;
-      }
-
-      if (_rxBuffer[19] == 0x7D) {
-        final validFrame = _rxBuffer.sublist(0, 20);
-        _rxBuffer.removeRange(0, 20);
-        _routeFrame(validFrame);
-      } else {
-        _rxBuffer.removeAt(0);
-      }
-    }
-  }
-
-  // ---------------------------------------------------------------------------
-  // High-speed 20 Hz binary unpacker — dev mode only
-  // ---------------------------------------------------------------------------
-
-  void _onDevPacket(List<int> frame) {
-    if (frame.length < 20) return;
-    final bd = ByteData.sublistView(Uint8List.fromList(frame));
-
-    _sensorBuffer.addRawAccel(
-      bd.getInt16(2,  Endian.little).toDouble(),
-      bd.getInt16(4,  Endian.little).toDouble(),
-      bd.getInt16(6,  Endian.little).toDouble(),
-    );
-    _sensorBuffer.addRawGyro(
-      bd.getInt16(8,  Endian.little).toDouble(),
-      bd.getInt16(10, Endian.little).toDouble(),
-      bd.getInt16(12, Endian.little).toDouble(),
-    );
-    _sensorBuffer.addRawLight(
-      bd.getUint16(16, Endian.little).toDouble(), // clear
-      bd.getUint16(14, Endian.little).toDouble(), // f3
-    );
-    // frame[18] → uint8 dB SPL (int), bd.getInt8(19) → int8 dBFS (int).
-    // addRawMic accepts int directly — no .toDouble() needed here.
-    _sensorBuffer.addRawMic(
-      frame[18],          // noiseDbSpl — uint8, int
-      bd.getInt8(19),     // noiseDbFs  — int8,  int
-    );
-  }
-
-  // ---------------------------------------------------------------------------
-  // Verified frame router — 1 Hz path
-  // ---------------------------------------------------------------------------
-
-  void _routeFrame(List<int> frame) {
-    final msgType = MsgType.fromByte(frame[1]);
+    final msgType = MsgType.fromByte(data[0]);
     if (msgType == null) {
-      debugPrint('MainShell: unknown msg type 0x${frame[1].toRadixString(16).toUpperCase()}');
+      debugPrint('MainShell: unknown msg_type 0x${data[0].toRadixString(16).toUpperCase()}');
       return;
     }
 
+    final store     = context.read<SessionStore>();
+    final sessionId = store.activeSession?.id;
+    final tsMs      = DateTime.now().millisecondsSinceEpoch;
+
     switch (msgType) {
-      case MsgType.unifiedState:
-        final sessionId = context.read<SessionStore>().activeSession?.id;
+      // ── IMU metrics  (0x50, 7 bytes, 1 Hz) ──────────────────────────────
+      case MsgType.imuMetrics:
         if (sessionId == null) return;
-
-        final packet = UnifiedTelemetry.fromFrame(
-          frame,
-          sessionId: sessionId,
-          tsMs: DateTime.now().millisecondsSinceEpoch,
-        );
-
+        final packet = LiveImuPacket.fromBytes(data, sessionId: sessionId, tsMs: tsMs);
+        store.onImuPacket(packet);
         _sensorBuffer.addMetrics(
-          steps:         packet.stepCount.toDouble(),
-          cadence:       packet.cadence.toDouble(),
-          activity:      packet.activityState.toDouble(),
-          lux:           packet.clearChannel.toDouble(),
-          uvRisk:        packet.uvRisk * 11.0,
-          blueIntensity: packet.blueLightIntensity.toDouble(),
-          blueRatio:     packet.blueLightRatio,
-          colorTemp:     packet.colorTemp.toDouble(),
+          steps:    packet.stepCount.toDouble(),
+          activity: packet.activity.value.toDouble(),
+          // TODO-REMOVE: cadence, lux, uvRisk, blueIntensity, blueRatio,
+          // colorTemp are no longer in the IMU packet; pass 0 until
+          // SensorBuffer is updated to accept per-packet-type data.
+          cadence:       0,
+          lux:           0,
+          uvRisk:        0,
+          blueIntensity: 0,
+          blueRatio:     0,
+          colorTemp:     0,
         );
 
-        context.read<SessionStore>().onUnifiedPacket(packet);
+      // ── Light metrics (0x51, 3 bytes, 3 Hz change-gated) ─────────────────
+      case MsgType.lightMetrics:
+        if (sessionId == null) return;
+        final packet = LiveLightPacket.fromBytes(data, sessionId: sessionId, tsMs: tsMs);
+        store.onLightPacket(packet);
+        _sensorBuffer.addMetrics(
+          lux:           packet.intensity.toDouble(),
+          blueIntensity: packet.intensity.toDouble(),
+          // TODO-REMOVE: pass 0 for fields that no longer exist in live packets.
+          steps:    0,
+          cadence:  0,
+          activity: 0,
+          uvRisk:   0,
+          blueRatio: 0,
+          colorTemp: 0,
+        );
 
+      // ── Mic metrics  (0x52, 4 bytes, 3 Hz change-gated) ──────────────────
+      case MsgType.micMetrics:
+        if (sessionId == null) return;
+        final packet = LiveMicPacket.fromBytes(data, sessionId: sessionId, tsMs: tsMs);
+        store.onMicPacket(packet);
+
+      // ── Connection event (0x53, 2 bytes) ─────────────────────────────────
+      case MsgType.connectionEvent:
+        if (data.length < 2) return;
+        final event = LiveConnectionEvent.fromByte(data[1]);
+        if (event == null) return;
+        final ack = store.onConnectionEvent(event);
+        widget.stream?.sendData(ack);
+
+      // ── Legacy: unified state (0x55) — BLE-sync path only ────────────────
+      // TODO-REMOVE: Remove this case once BLE-sync is migrated.
+      case MsgType.unifiedState:
+        if (sessionId == null) return;
+        // Legacy framer expected a 20-byte '{' ... '}' wrapped frame.
+        // The raw bytes arriving here during ble_live are the bare packet;
+        // do nothing meaningful — this case should not fire in live mode.
+        debugPrint('MainShell: unexpected unifiedState packet in live mode'); // TODO-REMOVE
+
+      // ── TODO-REMOVE: HAR — not yet implemented ────────────────────────────
       case MsgType.har:
-        debugPrint('MainShell: HAR packet received (not yet handled)');
+        debugPrint('MainShell: HAR packet received (not yet handled)'); // TODO-REMOVE
 
       case MsgType.end:
         debugPrint('MainShell: end-of-stream packet received.');
     }
   }
 
-  // ---------------------------------------------------------------------------
-  // Helpers — nav
-  // ---------------------------------------------------------------------------
+  // ── TODO-REMOVE: _onDevPacket — 20 Hz raw dev-mode path ───────────────────
+  // No equivalent packet exists in ble_live workflow.
+  // Remove this method and _devSub once dev-dashboard is updated.
+  void _onDevPacket(List<int> frame) { // TODO-REMOVE
+    debugPrint('MainShell: _onDevPacket called — no-op in ble_live mode'); // TODO-REMOVE
+  } // TODO-REMOVE
+
+  // ── Helpers — nav ──────────────────────────────────────────────────────────
 
   List<AppTab> get _activeTabs => [
     if (_devMode) AppTab.devData,
@@ -198,13 +187,12 @@ class _MainShellState extends State<MainShell> {
     setState(() {
       _devMode    = enabled;
       _currentTab = AppTab.fitness;
-      if (widget.stream != null) widget.stream!.setMcuMode(enabled);
+      // TODO-REMOVE: setMcuMode is a no-op in ble_live; remove the call below.
+      if (widget.stream != null) widget.stream!.setMcuMode(enabled); // TODO-REMOVE
     });
   }
 
-  // ---------------------------------------------------------------------------
-  // UI
-  // ---------------------------------------------------------------------------
+  // ── UI ──────────────────────────────────────────────────────────────────────
 
   @override
   Widget build(BuildContext context) {

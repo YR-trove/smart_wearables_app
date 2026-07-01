@@ -7,11 +7,29 @@ import 'package:smart_wearables_app/data/session_store.dart';
 import 'package:smart_wearables_app/main_shell.dart';
 import 'package:permission_handler/permission_handler.dart';
 
-// --- BLE Service and Characteristic UUIDs ---
-// RN4871 (Microchip) ISSP transparent UART service
+// ── BLE Service / Characteristic UUIDs (RN4871 ISSP Transparent UART) ────────
 Uuid serviceUuid          = Uuid.parse("49535343-FE7D-4AE5-8FA9-9FAFD205E455");
-Uuid characteristicUuid   = Uuid.parse("49535343-1E4D-4BD9-BA61-23C647249616"); // RX
-Uuid characteristicUuidTX = Uuid.parse("49535343-8841-43F4-A8D4-ECBE34729BB3"); // TX
+Uuid characteristicUuid   = Uuid.parse("49535343-1E4D-4BD9-BA61-23C647249616"); // RX (MCU → App)
+Uuid characteristicUuidTX = Uuid.parse("49535343-8841-43F4-A8D4-ECBE34729BB3"); // TX (App → MCU)
+
+// ── Live-mode packet minimum lengths (must match ble_live_payload.h) ─────────
+const int _kImuPacketLen        = 7;   // 0x50
+const int _kLightPacketLen      = 3;   // 0x51
+const int _kMicPacketLen        = 4;   // 0x52
+const int _kConnectionEventLen  = 2;   // 0x53
+
+/// Returns the expected byte length for [msgType], or null if unknown.
+int? _packetLen(int msgType) => switch (msgType) {
+  0x50 => _kImuPacketLen,
+  0x51 => _kLightPacketLen,
+  0x52 => _kMicPacketLen,
+  0x53 => _kConnectionEventLen,
+  _ => null,
+};
+
+// ── Single ACK frame ──────────────────────────────────────────────────────────
+/// ASCII ACK (0x06) — sent after connection and after each live packet.
+const List<int> _kAck = [0x06];
 
 class ConnectionPage extends StatefulWidget {
   const ConnectionPage({super.key, required this.title});
@@ -47,7 +65,7 @@ class _ConnectionPageState extends State<ConnectionPage> {
 
   void refreshScreen() => setState(() {});
 
-  // ── Permissions ─────────────────────────────────────────────────────────
+  // ── Permissions ─────────────────────────────────────────────────────────────
 
   Future<void> _showNoPermissionDialog() async => showDialog<void>(
     context: context,
@@ -84,7 +102,7 @@ class _ConnectionPageState extends State<ConnectionPage> {
     if (granted && !scanning) _startScan();
   }
 
-  // ── Scan ─────────────────────────────────────────────────────────────────
+  // ── Scan ─────────────────────────────────────────────────────────────────────
 
   void _stopScan() async {
     await scanStream.cancel();
@@ -121,7 +139,7 @@ class _ConnectionPageState extends State<ConnectionPage> {
     });
   }
 
-  // ── Connection ───────────────────────────────────────────────────────────
+  // ── Connection ───────────────────────────────────────────────────────────────
 
   void _startConnection(int index) async {
     if (scanning) { scanStream.cancel(); scanning = false; }
@@ -133,8 +151,6 @@ class _ConnectionPageState extends State<ConnectionPage> {
       id: foundBleDevicesFiltered[index].id,
       connectionTimeout: const Duration(seconds: 5),
     );
-
-    // ... (keep your existing connection = currentConnectionStream.listen(...) )
 
     connection = currentConnectionStream.listen((event) {
       final id = event.deviceId.toString();
@@ -172,115 +188,95 @@ class _ConnectionPageState extends State<ConnectionPage> {
     connecting = false;
     debugPrint('Connected to $id');
 
-    // 1. SAFELY NEGOTIATE MTU AFTER CONNECTION
+    // 1. Negotiate MTU
     try {
       await flutterReactiveBle.requestMtu(deviceId: id, mtu: 512);
     } catch (e) {
       debugPrint('MTU request failed or ignored: $e');
     }
 
-    // 2. EXPLICITLY DISCOVER SERVICES (Prevents Android GATT silent failures)
+    // 2. Discover services
     try {
       await flutterReactiveBle.discoverAllServices(id);
     } catch (e) {
       debugPrint('Service discovery error: $e');
     }
 
-    // ── RX setup ────────────────────────────────────────────────────────
+    // ── RX characteristic ───────────────────────────────────────────────────
     _rxCharacteristic = QualifiedCharacteristic(
-      serviceId: serviceUuid,
+      serviceId:        serviceUuid,
       characteristicId: characteristicUuid,
-      deviceId: event.deviceId,
+      deviceId:         event.deviceId,
     );
 
-    // const int fixedPacketLength = 20;
-    List<int> packetBuffer = [];
+    // ── TX characteristic ───────────────────────────────────────────────────
+    _txCharacteristic = QualifiedCharacteristic(
+      serviceId:        serviceUuid,
+      characteristicId: characteristicUuidTX,
+      deviceId:         event.deviceId,
+    );
 
+    // ── Wire outgoing ACK / command stream to BLE TX ────────────────────────
+    await _txSubscription?.cancel();
+    _txSubscription = incomingBLEStream.controllerSend.stream.listen((data) async {
+      try {
+        await flutterReactiveBle.writeCharacteristicWithoutResponse(
+            _txCharacteristic, value: data);
+        debugPrint('TX → MCU: $data');
+      } catch (e) {
+        debugPrint('TX Error: $e');
+      }
+    });
+
+    // ── Subscribe to RX notifications ───────────────────────────────────────
     await Future.delayed(const Duration(milliseconds: 500));
     await _rxSubscription?.cancel();
-    
-_rxSubscription = flutterReactiveBle.subscribeToCharacteristic(_rxCharacteristic).listen(
-      (packet) {
-        packetBuffer.addAll(packet);
-        
-        while (packetBuffer.isNotEmpty) {
-          int header = packetBuffer[0];
 
-          // -------------------------------------------------------------
-          // SCENARIO A: The packet is wrapped in '{' (Normal OR Wrapped Dev)
-          // -------------------------------------------------------------
-          if (header == 123) { 
-            int endIndex = packetBuffer.indexOf(125); // Find the '}' bracket
-            
-            if (endIndex != -1) {
-              // We found a complete frame from '{' to '}'
-              final frame = packetBuffer.sublist(0, endIndex + 1);
-              
-              // Only process it if it's large enough to hold real data
-              if (frame.length >= 19) {
-                // Peek at Byte 1 to see what type of data is inside the wrapper
-                int msgType = frame[1]; 
-                
-                if (msgType == 85) { // 0x55 (Normal Metrics)
-                   // Pad it safely to 20 bytes so the rest of the app doesn't break
-                   List<int> paddedFrame = List.from(frame);
-                   while(paddedFrame.length < 20) {paddedFrame.add(0);}
-                   incomingBLEStream.controller.add(paddedFrame);
-                } 
-                else if (msgType == 119) { // 0x77 (Wrapped Dev Mode)
-                   // Strip the '{' and '}' so main_shell gets exactly the raw 20-byte struct
-                   final rawDevStruct = frame.sublist(1, frame.length - 1);
-                   if (rawDevStruct.length >= 20) {
-                     incomingBLEStream.controllerDevMode.add(rawDevStruct.sublist(0, 20));
-                   }
-                }
-              }
-              // Clear the processed frame from the buffer
-              packetBuffer.removeRange(0, endIndex + 1);
-            } else {
-              // We have '{' but haven't received '}' yet. Wait for next BLE chunk.
-              break; 
-            }
-          } 
-          // -------------------------------------------------------------
-          // SCENARIO B: The packet is Unwrapped Dev Mode (Starts exactly with 0x77)
-          // -------------------------------------------------------------
-          else if (header == 119) { 
-            if (packetBuffer.length >= 20) {
-              incomingBLEStream.controllerDevMode.add(packetBuffer.sublist(0, 20));
-              packetBuffer.removeRange(0, 20);
-            } else {
-              break; // Wait for full 20 bytes
-            }
-          } 
-          // -------------------------------------------------------------
-          // SCENARIO C: Garbage data. Drop 1 byte and realign.
-          // -------------------------------------------------------------
-          else {
+    final List<int> packetBuffer = [];
+
+    _rxSubscription = flutterReactiveBle
+        .subscribeToCharacteristic(_rxCharacteristic)
+        .listen(
+      (chunk) {
+        packetBuffer.addAll(chunk);
+
+        // ── Live-mode framer ─────────────────────────────────────────────
+        // Packets are bare fixed-size structs with a leading msg_type byte.
+        // No '{' / '}' wrappers — those belonged to the old unified frame.
+        while (packetBuffer.isNotEmpty) {
+          final msgType = packetBuffer[0];
+          final expected = _packetLen(msgType);
+
+          if (expected == null) {
+            // Unknown header byte — drop 1 byte and re-align.
             packetBuffer.removeAt(0);
+            continue;
           }
+
+          if (packetBuffer.length < expected) {
+            break; // Wait for the rest of the packet.
+          }
+
+          // Extract the complete packet and send ACK.
+          final packet = List<int>.unmodifiable(packetBuffer.sublist(0, expected));
+          packetBuffer.removeRange(0, expected);
+
+          incomingBLEStream.controller.add(packet);
+
+          // Send ACK after every received live-mode packet.
+          incomingBLEStream.sendAck();
+          debugPrint('RX ← MCU [0x${msgType.toRadixString(16)}] ${packet.length} bytes → ACK sent');
         }
       },
       onError: (dynamic error) => debugPrint('RX error: $error'),
     );
 
-    // ── TX setup ────────────────────────────────────────────────────────
-    _txCharacteristic = QualifiedCharacteristic(
-      serviceId: serviceUuid,
-      characteristicId: characteristicUuidTX,
-      deviceId: event.deviceId,
-    );
-    
-    await _txSubscription?.cancel();
-    _txSubscription = incomingBLEStream.controllerSend.stream.listen((data) async {
-      try {
-        await flutterReactiveBle.writeCharacteristicWithoutResponse(_txCharacteristic, value: data);
-        debugPrint('TX Sent to MCU: $data');
-      } catch (e) {
-        debugPrint('TX Error: $e');
-      }
-    });
-    
+    // ── Send connection-acknowledged ACK to mainboard ───────────────────────
+    // This lets the MCU confirm the app is ready before it starts streaming.
+    await Future.delayed(const Duration(milliseconds: 100));
+    incomingBLEStream.sendData(_kAck);
+    debugPrint('Connection ACK sent to MCU');
+
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(content: Text('Connected!')));
@@ -288,9 +284,6 @@ _rxSubscription = flutterReactiveBle.subscribeToCharacteristic(_rxCharacteristic
     _navigateToShell(event.deviceId);
   }
 
-  /// Checks whether a user profile exists in the DB.
-  /// - If yes  → go directly to MainShell.
-  /// - If no   → show onboarding, then go to MainShell.
   Future<void> _navigateToShell(String deviceId) async {
     final store = context.read<SessionStore>();
     final users = await store.getAllUsers();
@@ -298,7 +291,6 @@ _rxSubscription = flutterReactiveBle.subscribeToCharacteristic(_rxCharacteristic
     if (!mounted) return;
 
     if (users.isEmpty) {
-      // First launch: collect a user profile before starting the session.
       await Navigator.push(
         context,
         MaterialPageRoute(
@@ -306,7 +298,6 @@ _rxSubscription = flutterReactiveBle.subscribeToCharacteristic(_rxCharacteristic
         ),
       );
     } else {
-      // Use the first available user (multi-user switcher lives in Settings).
       if (store.currentUser == null) {
         await store.switchUser(users.first.id!);
       }
@@ -355,7 +346,7 @@ _rxSubscription = flutterReactiveBle.subscribeToCharacteristic(_rxCharacteristic
     _askPermissions();
   }
 
-  // ── UI ───────────────────────────────────────────────────────────────────
+  // ── UI ───────────────────────────────────────────────────────────────────────
 
   @override
   Widget build(BuildContext context) {
@@ -435,7 +426,6 @@ _rxSubscription = flutterReactiveBle.subscribeToCharacteristic(_rxCharacteristic
 }
 
 // ── User Onboarding ──────────────────────────────────────────────────────────
-// Shown once on first launch when no user profile exists in the DB.
 
 class UserOnboardingPage extends StatefulWidget {
   final SessionStore store;
@@ -491,8 +481,6 @@ class _UserOnboardingPageState extends State<UserOnboardingPage> {
                 style: TextStyle(color: Colors.grey),
               ),
               const SizedBox(height: 32),
-
-              // Name (required)
               TextFormField(
                 controller: _nameCtrl,
                 decoration: const InputDecoration(
@@ -505,8 +493,6 @@ class _UserOnboardingPageState extends State<UserOnboardingPage> {
                     (v == null || v.trim().isEmpty) ? 'Name is required' : null,
               ),
               const SizedBox(height: 16),
-
-              // Age (optional)
               TextFormField(
                 controller: _ageCtrl,
                 decoration: const InputDecoration(
@@ -524,8 +510,6 @@ class _UserOnboardingPageState extends State<UserOnboardingPage> {
                 },
               ),
               const SizedBox(height: 16),
-
-              // Weight (optional)
               TextFormField(
                 controller: _weightCtrl,
                 decoration: const InputDecoration(
@@ -543,8 +527,6 @@ class _UserOnboardingPageState extends State<UserOnboardingPage> {
                 },
               ),
               const SizedBox(height: 16),
-
-              // Height (optional)
               TextFormField(
                 controller: _heightCtrl,
                 decoration: const InputDecoration(
@@ -562,7 +544,6 @@ class _UserOnboardingPageState extends State<UserOnboardingPage> {
                 },
               ),
               const SizedBox(height: 32),
-
               ElevatedButton(
                 onPressed: _saving ? null : _save,
                 style: ElevatedButton.styleFrom(

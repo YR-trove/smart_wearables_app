@@ -1,48 +1,46 @@
 import 'dart:async';
 import 'package:flutter/foundation.dart';
-class MyStream {
-  // 1. The 1Hz Normal Mode Stream (UI, Step Count, General Metrics)
-  StreamController<List<int>> controller          = StreamController<List<int>>.broadcast();
-  
-  // 2. The 20Hz Dev Mode Stream (High-speed Accel, Gyro, Light, Mic plots)
-  StreamController<List<int>> controllerDevMode   = StreamController<List<int>>.broadcast();
-  
-  // 3. Telemetry Streams
-  StreamController<List<int>> controllerBattery   = StreamController<List<int>>.broadcast();
-  
-  // 4. Outgoing MCU Commands
-  StreamController<List<int>> controllerSend      = StreamController<List<int>>.broadcast();
 
+class MyStream {
+  // 1. Live-mode packet stream (1 Hz IMU + 3 Hz env, variable-length)
+  StreamController<List<int>> controller        = StreamController<List<int>>.broadcast();
+
+  // 2. Outgoing commands / ACKs to the MCU
+  StreamController<List<int>> controllerSend    = StreamController<List<int>>.broadcast();
+
+  /// TODO-REMOVE: controllerDevMode was the 20 Hz raw dev-mode stream.
+  /// No equivalent packet type exists in the ble_live workflow.
+  /// Remove this field (and all listeners) once the dev-dashboard is updated.
+  StreamController<List<int>> controllerDevMode = StreamController<List<int>>.broadcast(); // TODO-REMOVE
+
+  /// TODO-REMOVE: controllerBattery was planned but never connected to a
+  /// real MCU packet.  Remove once confirmed unused.
+  StreamController<List<int>> controllerBattery = StreamController<List<int>>.broadcast(); // TODO-REMOVE
+
+  /// Route a received raw packet to the correct stream.
+  /// The live-mode protocol uses fixed-size packets with a leading msg_type
+  /// byte — no framing wrappers required.
   void setNum(List<int> data) {
     if (data.isEmpty) return;
-
-    // Route the packet based on its Header Byte (data[0])
-    if (data[0] == 123) { // 123 in decimal: Unified 1Hz Payload
-      controller.add(data);
-    } 
-    else if (data[0] == 119) { // 119 in decimal: Omnibus 20Hz Dev Payload
-      controllerDevMode.add(data);
-    }
-    else {
-      debugPrint('Warning: Unknown packet header received: ${data[0]}');
-    }
+    // All live-mode packet types are routed through controller.
+    // MainShell dispatches by reading data[0] (msg_type).
+    controller.add(data);
   }
 
-  /// Sends a command to the MCU to switch data streaming modes.
-  /// [isRawMode] true = 100Hz Raw IMU/Light, false = 1Hz Metrics
-  Future<void> setMcuMode(bool isRawMode) async {
-    final payload = isRawMode ? 0x01 : 0x00;
-    
-    // Command frame: [Start, MsgType, Payload, End]
-    final command = [0x7B, 0xC0, payload, 0x7D];
-    
-    // Push the command into the stream.
-    controllerSend.add(command);
-    
-    debugPrint('MainShell: MCU Mode swapped to -> ${isRawMode ? "RAW" : "METRICS"}');
-  }
-
+  /// Send a raw byte buffer to the MCU over BLE TX.
   void sendData(List<int> data) {
     controllerSend.add(data);
   }
+
+  /// Send a single ACK byte (0x06) to the MCU.
+  void sendAck() {
+    controllerSend.add(const [0x06]);
+  }
+
+  /// TODO-REMOVE: setMcuMode switched between 1 Hz metrics and 20 Hz raw mode.
+  /// The ble_live workflow has no equivalent mode-switch command.
+  /// Remove once settings page toggle is removed.
+  Future<void> setMcuMode(bool isRawMode) async { // TODO-REMOVE
+    debugPrint('MyStream.setMcuMode: no-op in ble_live workflow'); // TODO-REMOVE
+  } // TODO-REMOVE
 }
