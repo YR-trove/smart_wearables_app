@@ -47,7 +47,7 @@ class _MainShellState extends State<MainShell> {
     if (widget.stream != null && widget.deviceId != null) {
       _startSession();
       _sub = widget.stream!.controller.stream.listen(_onPacket);
-      // TODO-REMOVE: remove the _devSub line once dev-dashboard is updated.
+      // TODO-REMOVE: remove _devSub once dev-dashboard is removed.
       _devSub = widget.stream!.controllerDevMode.stream.listen(_onDevPacket); // TODO-REMOVE
     }
   }
@@ -96,49 +96,38 @@ class _MainShellState extends State<MainShell> {
     final tsMs      = DateTime.now().millisecondsSinceEpoch;
 
     switch (msgType) {
-      // ── IMU metrics  (0x50, 7 bytes, 1 Hz) ──────────────────────────────
+
+      // ── IMU metrics (0x50, 7 bytes, 1 Hz) ─────────────────────────────────
       case MsgType.imuMetrics:
         if (sessionId == null) return;
         final packet = LiveImuPacket.fromBytes(data, sessionId: sessionId, tsMs: tsMs);
         store.onImuPacket(packet);
-        _sensorBuffer.addMetrics(
+        _sensorBuffer.addImuMetrics(
           steps:    packet.stepCount.toDouble(),
           activity: packet.activity.value.toDouble(),
-          // TODO-REMOVE: cadence, lux, uvRisk, blueIntensity, blueRatio,
-          // colorTemp are no longer in the IMU packet; pass 0 until
-          // SensorBuffer is updated to accept per-packet-type data.
-          cadence:       0,
-          lux:           0,
-          uvRisk:        0,
-          blueIntensity: 0,
-          blueRatio:     0,
-          colorTemp:     0,
         );
 
-      // ── Light metrics (0x51, 3 bytes, 3 Hz change-gated) ─────────────────
+      // ── Light metrics (0x51, 3 bytes, ~3 s change-gated) ──────────────────
       case MsgType.lightMetrics:
         if (sessionId == null) return;
         final packet = LiveLightPacket.fromBytes(data, sessionId: sessionId, tsMs: tsMs);
         store.onLightPacket(packet);
-        _sensorBuffer.addMetrics(
-          lux:           packet.intensity.toDouble(),
-          blueIntensity: packet.intensity.toDouble(),
-          // TODO-REMOVE: pass 0 for fields that no longer exist in live packets.
-          steps:    0,
-          cadence:  0,
-          activity: 0,
-          uvRisk:   0,
-          blueRatio: 0,
-          colorTemp: 0,
+        _sensorBuffer.addLightMetrics(
+          intensity:     packet.intensity.toDouble(),
+          exposureClass: packet.exposureClass.value.toDouble(),
         );
 
-      // ── Mic metrics  (0x52, 4 bytes, 3 Hz change-gated) ──────────────────
+      // ── Mic metrics (0x52, 4 bytes, ~3 s change-gated) ────────────────────
       case MsgType.micMetrics:
         if (sessionId == null) return;
         final packet = LiveMicPacket.fromBytes(data, sessionId: sessionId, tsMs: tsMs);
         store.onMicPacket(packet);
+        _sensorBuffer.addMicMetrics(
+          laeqDb:   packet.laeqDb,
+          envClass: packet.envClass.value.toDouble(),
+        );
 
-      // ── Connection event (0x53, 2 bytes) ─────────────────────────────────
+      // ── Connection event (0x53, 2 bytes) ──────────────────────────────────
       case MsgType.connectionEvent:
         if (data.length < 2) return;
         final event = LiveConnectionEvent.fromByte(data[1]);
@@ -146,17 +135,14 @@ class _MainShellState extends State<MainShell> {
         final ack = store.onConnectionEvent(event);
         widget.stream?.sendData(ack);
 
-      // ── Legacy: unified state (0x55) — BLE-sync path only ────────────────
+      // ── Legacy: unified state (0x55) — BLE-sync path only ─────────────────
       // TODO-REMOVE: Remove this case once BLE-sync is migrated.
-      case MsgType.unifiedState:
-        if (sessionId == null) return;
-        // Legacy framer expected a 20-byte '{' ... '}' wrapped frame.
-        // The raw bytes arriving here during ble_live are the bare packet;
-        // do nothing meaningful — this case should not fire in live mode.
+      case MsgType.unifiedState: // TODO-REMOVE
+        if (sessionId == null) return; // TODO-REMOVE
         debugPrint('MainShell: unexpected unifiedState packet in live mode'); // TODO-REMOVE
 
-      // ── TODO-REMOVE: HAR — not yet implemented ────────────────────────────
-      case MsgType.har:
+      // ── TODO-REMOVE: HAR — not yet implemented ─────────────────────────────
+      case MsgType.har: // TODO-REMOVE
         debugPrint('MainShell: HAR packet received (not yet handled)'); // TODO-REMOVE
 
       case MsgType.end:
@@ -166,7 +152,6 @@ class _MainShellState extends State<MainShell> {
 
   // ── TODO-REMOVE: _onDevPacket — 20 Hz raw dev-mode path ───────────────────
   // No equivalent packet exists in ble_live workflow.
-  // Remove this method and _devSub once dev-dashboard is updated.
   void _onDevPacket(List<int> frame) { // TODO-REMOVE
     debugPrint('MainShell: _onDevPacket called — no-op in ble_live mode'); // TODO-REMOVE
   } // TODO-REMOVE
@@ -181,26 +166,30 @@ class _MainShellState extends State<MainShell> {
     AppTab.settings,
   ];
 
-  int get _pageIndex => _activeTabs.indexOf(_currentTab).clamp(0, _activeTabs.length - 1);
+  int get _pageIndex =>
+      _activeTabs.indexOf(_currentTab).clamp(0, _activeTabs.length - 1);
 
   void _onDevModeChanged(bool enabled) {
     setState(() {
       _devMode    = enabled;
       _currentTab = AppTab.fitness;
-      // TODO-REMOVE: setMcuMode is a no-op in ble_live; remove the call below.
+      // TODO-REMOVE: setMcuMode is a no-op in ble_live; remove call below.
       if (widget.stream != null) widget.stream!.setMcuMode(enabled); // TODO-REMOVE
     });
   }
 
-  // ── UI ──────────────────────────────────────────────────────────────────────
+  // ── UI ─────────────────────────────────────────────────────────────────────
 
   @override
   Widget build(BuildContext context) {
     final isConnected = widget.stream != null;
-    final tabs = _activeTabs;
+    final tabs        = _activeTabs;
 
     final screens = tabs.map((tab) => switch (tab) {
-      AppTab.devData  => HomePage(title: 'Raw Data (Dev)', buffer: _sensorBuffer, stream: widget.stream),
+      AppTab.devData  => HomePage(
+          title: 'Raw Data (Dev)',
+          buffer: _sensorBuffer,
+          stream: widget.stream),
       AppTab.fitness  => const FitnessPage(),
       AppTab.light    => const LightPage(),
       AppTab.stress   => const StressPage(),
@@ -211,11 +200,16 @@ class _MainShellState extends State<MainShell> {
     }).toList();
 
     final destinations = tabs.map((tab) => switch (tab) {
-      AppTab.devData  => const NavigationDestination(icon: Icon(Icons.developer_board), label: 'Dev Data'),
-      AppTab.fitness  => const NavigationDestination(icon: Icon(Icons.directions_run),  label: 'Fitness'),
-      AppTab.light    => const NavigationDestination(icon: Icon(Icons.wb_sunny),         label: 'Light'),
-      AppTab.stress   => const NavigationDestination(icon: Icon(Icons.self_improvement), label: 'Stress'),
-      AppTab.settings => const NavigationDestination(icon: Icon(Icons.settings),         label: 'Settings'),
+      AppTab.devData  => const NavigationDestination(
+          icon: Icon(Icons.developer_board), label: 'Dev Data'),
+      AppTab.fitness  => const NavigationDestination(
+          icon: Icon(Icons.directions_run), label: 'Fitness'),
+      AppTab.light    => const NavigationDestination(
+          icon: Icon(Icons.wb_sunny), label: 'Light'),
+      AppTab.stress   => const NavigationDestination(
+          icon: Icon(Icons.self_improvement), label: 'Stress'),
+      AppTab.settings => const NavigationDestination(
+          icon: Icon(Icons.settings), label: 'Settings'),
     }).toList();
 
     return Scaffold(
@@ -228,7 +222,8 @@ class _MainShellState extends State<MainShell> {
               onPressed: () => Navigator.push(
                 context,
                 MaterialPageRoute(
-                  builder: (_) => const ConnectionPage(title: 'Connect your device!'),
+                  builder: (_) =>
+                      const ConnectionPage(title: 'Connect your device!'),
                 ),
               ),
               icon: const Icon(Icons.bluetooth_searching),
@@ -239,7 +234,8 @@ class _MainShellState extends State<MainShell> {
           : null,
       bottomNavigationBar: NavigationBar(
         selectedIndex: _pageIndex,
-        onDestinationSelected: (i) => setState(() => _currentTab = _activeTabs[i]),
+        onDestinationSelected: (i) =>
+            setState(() => _currentTab = _activeTabs[i]),
         destinations: destinations,
       ),
     );

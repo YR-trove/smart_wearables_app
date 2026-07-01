@@ -1,67 +1,85 @@
 import 'package:flutter/foundation.dart';
 
+/// In-memory rolling buffer for the dev-dashboard charts.
+/// Each list holds up to [_maxPoints] samples; oldest is dropped when full.
 class SensorBuffer extends ChangeNotifier {
-  // Number of points visible on the screen
   static const int _maxPoints = 150;
 
-  // --- Metrics Mode Buffers (0x55) ---
-  final List<double> stepCountHistory    = [];
-  final List<double> cadenceHistory      = [];
-  final List<double> activityHistory     = [];
-  final List<double> luxHistory          = [];
-  final List<double> uvRiskHistory       = [];
-  final List<double> blueIntensityHistory = [];
-  final List<double> blueRatioHistory    = [];
-  final List<double> colorTempHistory    = [];
+  // ── Live IMU (0x50) ────────────────────────────────────────────────────────
+  final List<double> stepCountHistory = [];
+  final List<double> activityHistory  = [];
 
-  // --- Raw IMU Buffers (0x77) ---
-  final List<double> accelX = [], accelY = [], accelZ = [];
-  final List<double> gyroX  = [], gyroY  = [], gyroZ  = [];
+  // ── Live Light (0x51) ─────────────────────────────────────────────────────
+  final List<double> intensityHistory  = [];
+  final List<double> exposureHistory   = []; // exposure_class integer value
 
-  // --- Raw Spectral & Mic Buffers (0x77) ---
-  final List<double> f3 = [], rawClear = [];
-  final List<double> noiseDbSpl = [];
-  final List<double> noiseDbfs  = [];
+  // ── Live Mic (0x52) ───────────────────────────────────────────────────────
+  final List<double> laeqHistory    = [];   // LAeq in dB (laeqX10 / 10.0)
+  final List<double> envClassHistory = [];  // env_class integer value
 
-  void addMetrics({
-    required double steps, required double cadence, required double activity,
-    required double lux,   required double uvRisk,  required double blueIntensity,
+  // ── TODO-REMOVE: Legacy buffers from old unified-telemetry / 0x77 raw mode ─
+  // These fields are no longer populated by any live-mode packet.
+  // Remove once dev-dashboard widgets are updated.
+  final List<double> cadenceHistory       = []; // TODO-REMOVE
+  final List<double> luxHistory           = []; // TODO-REMOVE
+  final List<double> uvRiskHistory        = []; // TODO-REMOVE
+  final List<double> blueIntensityHistory = []; // TODO-REMOVE
+  final List<double> blueRatioHistory     = []; // TODO-REMOVE
+  final List<double> colorTempHistory     = []; // TODO-REMOVE
+
+  // ── TODO-REMOVE: Raw IMU / spectral / mic buffers (0x77 dev-mode) ─────────
+  final List<double> accelX = [], accelY = [], accelZ = []; // TODO-REMOVE
+  final List<double> gyroX  = [], gyroY  = [], gyroZ  = []; // TODO-REMOVE
+  final List<double> f3 = [], rawClear = [];                 // TODO-REMOVE
+  final List<double> noiseDbSpl = [];                        // TODO-REMOVE
+  final List<double> noiseDbfs  = [];                        // TODO-REMOVE
+
+  // ── Live-mode add methods ──────────────────────────────────────────────────
+
+  /// Called on every 0x50 IMU metrics packet (~1 Hz).
+  void addImuMetrics({required double steps, required double activity}) {
+    _append(stepCountHistory, steps);
+    _append(activityHistory,  activity);
+    notifyListeners();
+  }
+
+  /// Called on every 0x51 light metrics packet (~3 s, change-gated).
+  void addLightMetrics({required double intensity, required double exposureClass}) {
+    _append(intensityHistory, intensity);
+    _append(exposureHistory,  exposureClass);
+    notifyListeners();
+  }
+
+  /// Called on every 0x52 mic metrics packet (~3 s, change-gated).
+  /// [laeqDb] — LAeq in dB (= laeqX10 / 10.0).
+  void addMicMetrics({required double laeqDb, required double envClass}) {
+    _append(laeqHistory,     laeqDb);
+    _append(envClassHistory, envClass);
+    notifyListeners();
+  }
+
+  // ── TODO-REMOVE: Legacy add methods ───────────────────────────────────────
+  // These are no-ops kept to avoid compile errors while callers are updated.
+
+  /// TODO-REMOVE: addMetrics was the old unified-packet update.
+  /// Replace all callers with addImuMetrics / addLightMetrics / addMicMetrics.
+  void addMetrics({ // TODO-REMOVE
+    required double steps,    required double cadence,
+    required double activity, required double lux,
+    required double uvRisk,   required double blueIntensity,
     required double blueRatio, required double colorTemp,
-  }) {
-    _append(stepCountHistory,     steps);
-    _append(cadenceHistory,       cadence);
-    _append(activityHistory,      activity);
-    _append(luxHistory,           lux);
-    _append(uvRiskHistory,        uvRisk);
-    _append(blueIntensityHistory, blueIntensity);
-    _append(blueRatioHistory,     blueRatio);
-    _append(colorTempHistory,     colorTemp);
-    notifyListeners();
-  }
+  }) { // TODO-REMOVE
+    // Intentional no-op — fields no longer exist in live-mode packets.
+    debugPrint('SensorBuffer.addMetrics: deprecated, use per-packet methods'); // TODO-REMOVE
+  } // TODO-REMOVE
 
-  void addRawAccel(double x, double y, double z) {
-    _append(accelX, x); _append(accelY, y); _append(accelZ, z);
-    notifyListeners();
-  }
+  /// TODO-REMOVE: Raw 0x77 dev-mode add methods — no equivalent in ble_live.
+  void addRawAccel(double x, double y, double z) {} // TODO-REMOVE
+  void addRawGyro(double x, double y, double z)  {} // TODO-REMOVE
+  void addRawLight(double clearVal, double f3val) {} // TODO-REMOVE
+  void addRawMic(int dbSpl, int dbFs)             {} // TODO-REMOVE
 
-  void addRawGyro(double x, double y, double z) {
-    _append(gyroX, x); _append(gyroY, y); _append(gyroZ, z);
-    notifyListeners();
-  }
-
-  void addRawLight(double clearVal, double f3val) {
-    _append(rawClear, clearVal); _append(f3, f3val);
-    notifyListeners();
-  }
-
-  /// Receives raw BLE integer values and stores them in the double buffers.
-  /// [dbSpl] — uint8 dB SPL  (0‥255), as delivered by frame[N] (int).
-  /// [dbFs]  — int8  dBFS   (-128‥127), as delivered by bd.getInt8(N) (int).
-  void addRawMic(int dbSpl, int dbFs) {
-    _append(noiseDbSpl, dbSpl.toDouble());
-    _append(noiseDbfs,  dbFs.toDouble());
-    notifyListeners();
-  }
+  // ── Helpers ────────────────────────────────────────────────────────────────
 
   void _append(List<double> list, double value) {
     list.add(value);
@@ -75,15 +93,20 @@ class SensorBuffer extends ChangeNotifier {
   }
 
   void clear() {
-    stepCountHistory.clear(); cadenceHistory.clear(); activityHistory.clear();
-    luxHistory.clear(); uvRiskHistory.clear(); blueIntensityHistory.clear();
-    blueRatioHistory.clear(); colorTempHistory.clear();
-
-    accelX.clear(); accelY.clear(); accelZ.clear();
-    gyroX.clear();  gyroY.clear();  gyroZ.clear();
-    f3.clear(); rawClear.clear();
-    noiseDbSpl.clear(); noiseDbfs.clear();
-
+    stepCountHistory.clear(); activityHistory.clear();
+    intensityHistory.clear(); exposureHistory.clear();
+    laeqHistory.clear();      envClassHistory.clear();
+    // TODO-REMOVE: clear legacy buffers below once removed
+    cadenceHistory.clear();       // TODO-REMOVE
+    luxHistory.clear();           // TODO-REMOVE
+    uvRiskHistory.clear();        // TODO-REMOVE
+    blueIntensityHistory.clear(); // TODO-REMOVE
+    blueRatioHistory.clear();     // TODO-REMOVE
+    colorTempHistory.clear();     // TODO-REMOVE
+    accelX.clear(); accelY.clear(); accelZ.clear(); // TODO-REMOVE
+    gyroX.clear();  gyroY.clear();  gyroZ.clear();  // TODO-REMOVE
+    f3.clear(); rawClear.clear();                   // TODO-REMOVE
+    noiseDbSpl.clear(); noiseDbfs.clear();          // TODO-REMOVE
     notifyListeners();
   }
 }

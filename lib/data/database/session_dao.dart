@@ -1,13 +1,14 @@
 import 'package:sqflite/sqflite.dart';
 import 'package:smart_wearables_app/data/database/app_database.dart';
+import 'package:smart_wearables_app/data/models/live_packets.dart';
 import 'package:smart_wearables_app/data/models/session_model.dart';
-import 'package:smart_wearables_app/data/models/unified_telemetry.dart';
+import 'package:smart_wearables_app/data/models/unified_telemetry.dart'; // TODO-REMOVE
 
-/// Data-access object for session lifecycle and telemetry persistence.
+/// Data-access object for session lifecycle and live-mode telemetry persistence.
 class SessionDao {
   Future<Database> get _db => AppDatabase.instance.database;
 
-  // ─── Session CRUD ────────────────────────────────────────────────────────────
+  // ─── Session CRUD ──────────────────────────────────────────────────────────
 
   Future<SessionModel> insert(SessionModel session) async {
     final db = await _db;
@@ -32,88 +33,154 @@ class SessionDao {
     return rows.isEmpty ? null : SessionModel.fromMap(rows.first);
   }
 
-  // ─── Unified telemetry ───────────────────────────────────────────────────────
+  // ─── live_imu (0x50) ──────────────────────────────────────────────────────
 
-  /// Single immediate INSERT on every 1 Hz packet.
-  Future<void> insertUnified(UnifiedTelemetry row) async {
+  /// INSERT one IMU metrics row. Called on every 0x50 packet (~1 Hz).
+  Future<void> insertImu(LiveImuPacket row) async {
     final db = await _db;
     await db.insert(
-      'unified_telemetry',
+      'live_imu',
       row.toMap(),
       conflictAlgorithm: ConflictAlgorithm.replace,
     );
   }
 
-  Future<List<UnifiedTelemetry>> getTelemetryForSession(int sessionId) async {
-    final db = await _db;
+  /// All IMU rows for [sessionId], chronological.
+  Future<List<LiveImuPacket>> getImuForSession(int sessionId) async {
+    final db   = await _db;
     final rows = await db.query(
-      'unified_telemetry',
-      where: 'session_id = ?',
+      'live_imu',
+      where:    'session_id = ?',
       whereArgs: [sessionId],
-      orderBy: 'ts_ms ASC',
+      orderBy:  'ts_ms ASC',
     );
-    return rows.map(UnifiedTelemetry.fromMap).toList();
+    return rows.map(LiveImuPacket.fromMap).toList();
   }
 
-  Future<List<UnifiedTelemetry>> getRecentTelemetry(
+  /// Most-recent [limit] IMU rows for [sessionId], chronological.
+  Future<List<LiveImuPacket>> getRecentImu(
       int sessionId, {int limit = 60}) async {
-    final db = await _db;
+    final db   = await _db;
     final rows = await db.query(
-      'unified_telemetry',
-      where: 'session_id = ?',
+      'live_imu',
+      where:    'session_id = ?',
       whereArgs: [sessionId],
-      orderBy: 'ts_ms DESC',
-      limit: limit,
+      orderBy:  'ts_ms DESC',
+      limit:    limit,
     );
-    return rows.map(UnifiedTelemetry.fromMap).toList().reversed.toList();
+    return rows.map(LiveImuPacket.fromMap).toList().reversed.toList();
   }
 
-  // ─── Weekly step summary (Fitness bar chart) ─────────────────────────────────
+  // ─── live_light (0x51) ────────────────────────────────────────────────────
+
+  /// INSERT one light metrics row. Called on every 0x51 packet (~3 s, change-gated).
+  Future<void> insertLight(LiveLightPacket row) async {
+    final db = await _db;
+    await db.insert(
+      'live_light',
+      row.toMap(),
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
+  }
+
+  /// All light rows for [sessionId], chronological.
+  Future<List<LiveLightPacket>> getLightForSession(int sessionId) async {
+    final db   = await _db;
+    final rows = await db.query(
+      'live_light',
+      where:    'session_id = ?',
+      whereArgs: [sessionId],
+      orderBy:  'ts_ms ASC',
+    );
+    return rows.map(LiveLightPacket.fromMap).toList();
+  }
+
+  // ─── live_mic (0x52) ──────────────────────────────────────────────────────
+
+  /// INSERT one mic metrics row. Called on every 0x52 packet (~3 s, change-gated).
+  Future<void> insertMic(LiveMicPacket row) async {
+    final db = await _db;
+    await db.insert(
+      'live_mic',
+      row.toMap(),
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
+  }
+
+  /// All mic rows for [sessionId], chronological.
+  Future<List<LiveMicPacket>> getMicForSession(int sessionId) async {
+    final db   = await _db;
+    final rows = await db.query(
+      'live_mic',
+      where:    'session_id = ?',
+      whereArgs: [sessionId],
+      orderBy:  'ts_ms ASC',
+    );
+    return rows.map(LiveMicPacket.fromMap).toList();
+  }
+
+  // ─── Weekly step summary (Fitness bar chart) ───────────────────────────────
 
   /// Returns the max step count per day for the last 7 days.
-  /// Each entry: { 'day': 'YYYY-MM-DD', 'steps': int }
-  /// Uses MAX(step_count) per session joined on its started_at date to avoid
-  /// double-counting cumulative firmware step values.
+  /// Each entry: { 'day_of_week': 'Mon', 'max_steps': int }
+  /// Uses MAX(step_count) per session per day — firmware reports cumulative
+  /// steps since LIVE_START, so MAX gives the final tally for that session.
   Future<List<Map<String, dynamic>>> weeklyStepSummary() async {
-    final db = await _db;
-    
-    // Generate the last 7 days to ensure we always return 7 items
+    final db    = await _db;
     final today = DateTime.now();
     final since = today.subtract(const Duration(days: 6));
-    final sinceStr = since.toIso8601String().substring(0, 10);
+    final sinceStr =
+        '${since.year}-${since.month.toString().padLeft(2, '0')}-${since.day.toString().padLeft(2, '0')}';
 
-    // Query the database for the max steps per day
     final rows = await db.rawQuery('''
       SELECT
-        substr(s.started_at, 1, 10)  AS day,
-        MAX(ut.step_count)           AS steps
-      FROM unified_telemetry ut
-      INNER JOIN sessions s ON s.id = ut.session_id
+        substr(s.started_at, 1, 10) AS day,
+        MAX(li.step_count)          AS steps
+      FROM live_imu li
+      INNER JOIN sessions s ON s.id = li.session_id
       WHERE substr(s.started_at, 1, 10) >= ?
       GROUP BY substr(s.started_at, 1, 10)
       ORDER BY day ASC
     ''', [sinceStr]);
 
-    // Map the SQL results into a quick lookup dictionary
     final Map<String, int> dayMap = {
       for (final r in rows)
         r['day'] as String: (r['steps'] as int? ?? 0),
     };
 
-    // Helper list to convert DateTime.weekday (1-7) to UI strings
     const weekdayNames = ['', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
-    // Generate exactly 7 days of data, filling in zeros where needed
     return List.generate(7, (i) {
-      final d = since.add(Duration(days: i));
-      final key = '${d.year}-${d.month.toString().padLeft(2,'0')}-${d.day.toString().padLeft(2,'0')}';
-      
+      final d   = since.add(Duration(days: i));
+      final key =
+          '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
       return {
-        'day_of_week': weekdayNames[d.weekday], // e.g., 'Mon'
-        'max_steps': dayMap[key] ?? 0,          // The step count or 0
+        'day_of_week': weekdayNames[d.weekday],
+        'max_steps':   dayMap[key] ?? 0,
       };
     });
   }
 
+  // ─── Legacy unified telemetry — TODO-REMOVE ───────────────────────────────
+  // Keep until BLE-sync workflow is migrated to the live-packet protocol.
 
+  /// TODO-REMOVE: insertUnified writes to the old unified_telemetry table.
+  /// That table no longer exists in schema v5 — this method is a no-op
+  /// until the BLE-sync path is removed entirely.
+  Future<void> insertUnified(UnifiedTelemetry row) async { // TODO-REMOVE
+    // unified_telemetry was dropped in schema v5.
+    // This is intentionally a no-op to prevent crashes while the
+    // BLE-sync workflow is still being migrated.
+  } // TODO-REMOVE
+
+  /// TODO-REMOVE: getTelemetryForSession and getRecentTelemetry target the
+  /// old unified_telemetry table. Return empty lists until removed.
+  Future<List<UnifiedTelemetry>> getTelemetryForSession(int sessionId) async { // TODO-REMOVE
+    return [];
+  } // TODO-REMOVE
+
+  Future<List<UnifiedTelemetry>> getRecentTelemetry( // TODO-REMOVE
+      int sessionId, {int limit = 60}) async {
+    return [];
+  } // TODO-REMOVE
 }

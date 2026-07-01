@@ -1,29 +1,38 @@
 import 'dart:async';
 import 'package:flutter/foundation.dart';
 
-class MyStream {
-  // 1. Live-mode packet stream (1 Hz IMU + 3 Hz env, variable-length)
-  StreamController<List<int>> controller        = StreamController<List<int>>.broadcast();
+// ── ACK frame constants ───────────────────────────────────────────────────────
+/// Sent once immediately after BLE connection is established.
+/// Tells the mainboard the app is ready to receive live packets.
+const List<int> kAckConnect = [0xAA, 0x01];
 
-  // 2. Outgoing commands / ACKs to the MCU
-  StreamController<List<int>> controllerSend    = StreamController<List<int>>.broadcast();
+/// Builds a per-packet ACK: [0xAA, msgType].
+/// Sent after every successfully framed live-mode packet.
+List<int> ackForPacket(int msgType) => [0xAA, msgType];
+
+class MyStream {
+  // 1. Live-mode packet stream (1 Hz IMU + 3 s env, variable-length)
+  StreamController<List<int>> controller     = StreamController<List<int>>.broadcast();
+
+  // 2. Outgoing commands / ACKs to the MCU (wired to BLE TX in connection_page)
+  StreamController<List<int>> controllerSend = StreamController<List<int>>.broadcast();
 
   /// TODO-REMOVE: controllerDevMode was the 20 Hz raw dev-mode stream.
   /// No equivalent packet type exists in the ble_live workflow.
-  /// Remove this field (and all listeners) once the dev-dashboard is updated.
-  StreamController<List<int>> controllerDevMode = StreamController<List<int>>.broadcast(); // TODO-REMOVE
+  /// Remove this field (and all listeners) once the dev-dashboard is removed.
+  StreamController<List<int>> controllerDevMode =
+      StreamController<List<int>>.broadcast(); // TODO-REMOVE
 
   /// TODO-REMOVE: controllerBattery was planned but never connected to a
-  /// real MCU packet.  Remove once confirmed unused.
-  StreamController<List<int>> controllerBattery = StreamController<List<int>>.broadcast(); // TODO-REMOVE
+  /// real MCU packet. Remove once confirmed unused.
+  StreamController<List<int>> controllerBattery =
+      StreamController<List<int>>.broadcast(); // TODO-REMOVE
 
   /// Route a received raw packet to the correct stream.
   /// The live-mode protocol uses fixed-size packets with a leading msg_type
   /// byte — no framing wrappers required.
   void setNum(List<int> data) {
     if (data.isEmpty) return;
-    // All live-mode packet types are routed through controller.
-    // MainShell dispatches by reading data[0] (msg_type).
     controller.add(data);
   }
 
@@ -32,10 +41,24 @@ class MyStream {
     controllerSend.add(data);
   }
 
-  /// Send a single ACK byte (0x06) to the MCU.
-  void sendAck() {
-    controllerSend.add(const [0x06]);
+  /// Send the connection-established ACK [0xAA, 0x01] to the mainboard.
+  /// Call once immediately after BLE connection is confirmed.
+  void sendConnectAck() {
+    controllerSend.add(kAckConnect);
   }
+
+  /// Send a per-packet ACK [0xAA, msgType] after each successfully parsed packet.
+  void sendPacketAck(int msgType) {
+    controllerSend.add(ackForPacket(msgType));
+  }
+
+  /// TODO-REMOVE: sendAck() sent the old single-byte 0x06 ACK.
+  /// Replaced by sendConnectAck() and sendPacketAck(msgType).
+  /// Remove once all callers are updated.
+  void sendAck() { // TODO-REMOVE
+    debugPrint('MyStream.sendAck: deprecated — use sendPacketAck(msgType)'); // TODO-REMOVE
+    controllerSend.add(const [0x06]); // TODO-REMOVE
+  } // TODO-REMOVE
 
   /// TODO-REMOVE: setMcuMode switched between 1 Hz metrics and 20 Hz raw mode.
   /// The ble_live workflow has no equivalent mode-switch command.

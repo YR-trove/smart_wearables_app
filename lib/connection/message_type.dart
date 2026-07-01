@@ -7,15 +7,15 @@ enum MsgType {
   // ── Live-mode packets (ble_live workflow) ─────────────────────────────────
 
   /// 7-byte IMU metrics packet. Sent every 1 s unconditionally.
-  /// [BleLiveImuPacket.fromBytes]
+  /// Parse with [LiveImuPacket.fromBytes].
   imuMetrics(0x50),
 
   /// 3-byte light metrics packet. Sent every 3 s on value change.
-  /// [LiveLightPacket.fromBytes]
+  /// Parse with [LiveLightPacket.fromBytes].
   lightMetrics(0x51),
 
   /// 4-byte mic / audio metrics packet. Sent every 3 s on value change.
-  /// [LiveMicPacket.fromBytes]
+  /// Parse with [LiveMicPacket.fromBytes].
   micMetrics(0x52),
 
   /// 2-byte connection-event packet (LIVE_START / LIVE_STOP).
@@ -25,21 +25,22 @@ enum MsgType {
 
   /// TODO-REMOVE: Old 20-byte unified state frame (0x55). No longer sent
   /// during ble_live mode. Remove once BLE-sync workflow is also migrated.
-  unifiedState(0x55),
+  unifiedState(0x55), // TODO-REMOVE
 
   /// TODO-REMOVE: HAR packet — not yet implemented on mainboard side.
-  har(0xe0),
+  har(0xe0), // TODO-REMOVE
 
   /// End-of-stream sentinel.
   end(0xff);
 
-  final int description;
-  const MsgType(this.description);
+  /// The raw byte value that appears as the first byte of each packet.
+  final int value;
+  const MsgType(this.value);
 
   /// Returns the [MsgType] matching [byteValue], or null if unknown.
   static MsgType? fromByte(int byteValue) {
     for (final t in MsgType.values) {
-      if (t.description == byteValue) return t;
+      if (t.value == byteValue) return t;
     }
     return null;
   }
