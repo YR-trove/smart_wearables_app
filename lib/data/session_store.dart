@@ -4,7 +4,6 @@ import 'package:smart_wearables_app/data/database/session_dao.dart';
 import 'package:smart_wearables_app/data/database/user_dao.dart';
 import 'package:smart_wearables_app/data/models/live_packets.dart';
 import 'package:smart_wearables_app/data/models/session_model.dart';
-import 'package:smart_wearables_app/data/models/unified_telemetry.dart'; // TODO-REMOVE: delete when BLE-sync also migrated
 import 'package:smart_wearables_app/data/models/user_profile.dart';
 
 class SessionStore extends ChangeNotifier {
@@ -28,10 +27,6 @@ class SessionStore extends ChangeNotifier {
   LiveLightPacket? _latestLight;
   LiveMicPacket?   _latestMic;
 
-  /// TODO-REMOVE: latestTelemetry was the old unified-packet snapshot.
-  /// Remove once BLE-sync workflow is migrated to live packets.
-  UnifiedTelemetry? _latestTelemetry; // TODO-REMOVE
-  UnifiedTelemetry? get latestTelemetry => _latestTelemetry; // TODO-REMOVE
 
   UserProfile?    get currentUser      => _currentUser;
   SessionModel?   get activeSession    => _activeSession;
@@ -52,12 +47,7 @@ class SessionStore extends ChangeNotifier {
   double _distanceKm    = 0.0;
   double _totalKcal     = 0.0;
 
-  /// TODO-REMOVE: _currentCadence was derived from the old unified frame's
-  /// cadence byte which no longer exists in the live-mode IMU packet.
-  int _currentCadence = 0; // TODO-REMOVE
-
   int    get currentSteps   => _currentSteps;
-  int    get currentCadence => _currentCadence; // TODO-REMOVE
   int    get activityState  => _activityState;
   double get distanceKm     => _distanceKm;
   double get totalKcal      => _totalKcal;
@@ -73,12 +63,6 @@ class SessionStore extends ChangeNotifier {
   double get latestLaeqDb     => _latestMic?.laeqDb             ?? 0.0;
   String get latestEnvLabel   => _latestMic?.envClass.label     ?? '—';
 
-  /// TODO-REMOVE: noiseDbSpl / noiseDbFs were fields in the old unified frame.
-  /// The new mic packet reports LAeq × 10 instead. Remove the getters below
-  /// once all UI widgets are updated to use latestLaeqDb / latestEnvLabel.
-  double get latestNoiseDbSpl => _latestMic?.laeqDb ?? 0.0; // TODO-REMOVE remapped
-  double get latestNoiseDbFs  => 0.0;                       // TODO-REMOVE no equivalent
-
   // ─── Light / photobiology accumulators ────────────────────────────────────
 
   int    _sunlightSeconds       = 0;
@@ -88,14 +72,6 @@ class SessionStore extends ChangeNotifier {
   String _lightExposureLabel    = '—';
   int    _lightIntensity        = 0;   // 0–255
 
-  /// TODO-REMOVE: _currentUvIndex, _currentBlueRatio, _colorTemp, _clearChannel
-  /// were derived from the old AS7341 spectral fields in the unified frame.
-  /// The live-mode light packet only carries exposure_class + intensity.
-  /// Remove these fields and their getters once UI is updated.
-  double _currentUvIndex   = 0.0; // TODO-REMOVE
-  double _currentBlueRatio = 0.0; // TODO-REMOVE
-  int    _colorTemp        = 0;   // TODO-REMOVE
-  double _clearChannel     = 0.0; // TODO-REMOVE
 
   int    get sunlightSeconds       => _sunlightSeconds;
   int    get nightBlueLightSeconds => _nightBlueLightSeconds;
@@ -103,10 +79,6 @@ class SessionStore extends ChangeNotifier {
   int    get circadianScore        => _circadianScore;
   String get lightExposureLabel    => _lightExposureLabel;
   int    get lightIntensity        => _lightIntensity;
-  double get currentUvIndex        => _currentUvIndex;   // TODO-REMOVE
-  double get currentBlueRatio      => _currentBlueRatio; // TODO-REMOVE
-  int    get colorTemp             => _colorTemp;        // TODO-REMOVE
-  double get clearChannel          => _clearChannel;     // TODO-REMOVE
 
   SessionDao get sessionDao => _sessionDao;
 
@@ -125,28 +97,12 @@ class SessionStore extends ChangeNotifier {
   final List<double> _laeqHistory          = [];
   final List<double> _intensityHistory     = [];
 
-  /// TODO-REMOVE: The histories below map to fields that no longer exist in
-  /// live-mode packets. Keep until dev-dashboard widgets are updated.
-  final List<double> _cadenceHistory       = []; // TODO-REMOVE
-  final List<double> _uvHistory            = []; // TODO-REMOVE
-  final List<double> _blueIntensityHistory = []; // TODO-REMOVE
-  final List<double> _blueRatioHistory     = []; // TODO-REMOVE
-  final List<double> _colorTempHistory     = []; // TODO-REMOVE
-  final List<double> _clearChannelHistory  = []; // TODO-REMOVE
-  final List<double> _noiseDbSplHistory    = []; // TODO-REMOVE
 
   List<List<double>> get devMetricsHistory => [
     _stepsHistory,
     _activityHistory,
     _laeqHistory,
     _intensityHistory,
-    // TODO-REMOVE: remove legacy lists below once dev-dashboard is updated
-    _cadenceHistory,
-    _uvHistory,
-    _blueIntensityHistory,
-    _blueRatioHistory,
-    _colorTempHistory,
-    _clearChannelHistory,
   ];
 
   // ─── Initialisation — crash recovery ──────────────────────────────────────
@@ -209,7 +165,6 @@ class SessionStore extends ChangeNotifier {
     _latestImu        = null;
     _latestLight      = null;
     _latestMic        = null;
-    _latestTelemetry  = null; // TODO-REMOVE
     _sessionStartTime = null;
     _resetAccumulators();
     notifyListeners();
@@ -217,7 +172,6 @@ class SessionStore extends ChangeNotifier {
 
   void _resetAccumulators() {
     _currentSteps   = 0;
-    _currentCadence = 0; // TODO-REMOVE
     _activityState  = 0;
     _distanceKm     = 0.0;
     _totalKcal      = 0.0;
@@ -228,22 +182,11 @@ class SessionStore extends ChangeNotifier {
     _circadianScore        = 100;
     _lightExposureLabel    = '—';
     _lightIntensity        = 0;
-    _currentUvIndex        = 0.0; // TODO-REMOVE
-    _currentBlueRatio      = 0.0; // TODO-REMOVE
-    _colorTemp             = 0;   // TODO-REMOVE
-    _clearChannel          = 0.0; // TODO-REMOVE
 
     _stepsHistory.clear();
     _activityHistory.clear();
     _laeqHistory.clear();
     _intensityHistory.clear();
-    _cadenceHistory.clear();       // TODO-REMOVE
-    _uvHistory.clear();            // TODO-REMOVE
-    _blueIntensityHistory.clear(); // TODO-REMOVE
-    _blueRatioHistory.clear();     // TODO-REMOVE
-    _colorTempHistory.clear();     // TODO-REMOVE
-    _clearChannelHistory.clear();  // TODO-REMOVE
-    _noiseDbSplHistory.clear();    // TODO-REMOVE
   }
 
   // ─── Live-mode packet handlers ────────────────────────────────────────────
@@ -334,16 +277,6 @@ class SessionStore extends ChangeNotifier {
     return const [0x06];
   }
 
-  // ─── Legacy unified-packet handler ────────────────────────────────────────
-  // TODO-REMOVE: Remove this method and all callers once BLE-sync workflow
-  // is migrated to the live-packet protocol.
-
-  Future<void> onUnifiedPacket(UnifiedTelemetry packet) async { // TODO-REMOVE
-    if (_activeSession == null) return;
-    unawaited(_sessionDao.insertUnified(packet));
-    _latestTelemetry = packet;
-    notifyListeners();
-  }
 }
 
 void unawaited(Future<void> future) {

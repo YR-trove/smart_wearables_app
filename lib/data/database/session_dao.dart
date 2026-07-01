@@ -2,7 +2,6 @@ import 'package:sqflite/sqflite.dart';
 import 'package:smart_wearables_app/data/database/app_database.dart';
 import 'package:smart_wearables_app/data/models/live_packets.dart';
 import 'package:smart_wearables_app/data/models/session_model.dart';
-import 'package:smart_wearables_app/data/models/unified_telemetry.dart'; // TODO-REMOVE
 
 /// Data-access object for session lifecycle and live-mode telemetry persistence.
 class SessionDao {
@@ -161,26 +160,4 @@ class SessionDao {
     });
   }
 
-  // ─── Legacy unified telemetry — TODO-REMOVE ───────────────────────────────
-  // Keep until BLE-sync workflow is migrated to the live-packet protocol.
-
-  /// TODO-REMOVE: insertUnified writes to the old unified_telemetry table.
-  /// That table no longer exists in schema v5 — this method is a no-op
-  /// until the BLE-sync path is removed entirely.
-  Future<void> insertUnified(UnifiedTelemetry row) async { // TODO-REMOVE
-    // unified_telemetry was dropped in schema v5.
-    // This is intentionally a no-op to prevent crashes while the
-    // BLE-sync workflow is still being migrated.
-  } // TODO-REMOVE
-
-  /// TODO-REMOVE: getTelemetryForSession and getRecentTelemetry target the
-  /// old unified_telemetry table. Return empty lists until removed.
-  Future<List<UnifiedTelemetry>> getTelemetryForSession(int sessionId) async { // TODO-REMOVE
-    return [];
-  } // TODO-REMOVE
-
-  Future<List<UnifiedTelemetry>> getRecentTelemetry( // TODO-REMOVE
-      int sessionId, {int limit = 60}) async {
-    return [];
-  } // TODO-REMOVE
 }

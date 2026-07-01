@@ -18,14 +18,6 @@ class AppColors {
   static const success = Color(0xFF22C55E);
   static const amber100 = Color(0xFFFEF3C7);
   static const amber700 = Color(0xFFB45309);
-
-  // Developer dark theme base
-  static const devBg = Color(0xFF111827);
-  static const devCard = Color(0xFF1F2937);
-  static const devBorder = Color(0xFF374151);
-  static const devText = Color(0xFFF9FAFB);
-  static const devMuted = Color(0xFF9CA3AF);
-  static const devAccent = Color(0xFF60A5FA);
 }
 
 /// Helper method to get the dynamic card decoration

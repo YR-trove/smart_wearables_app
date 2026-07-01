@@ -40,7 +40,7 @@ class _StressPageState extends State<StressPage> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final sessionStore = context.watch<SessionStore>();
-    final currentSpl = sessionStore.latestNoiseDbSpl;
+    final currentSpl = 0.0; // TODO: Replace with actual SPL from live packets when available
     final elapsedSeconds = sessionStore.elapsed.inSeconds;
 
     // Lock state mutation behind the 1-second tick check
@@ -276,55 +276,7 @@ class _StressPageState extends State<StressPage> {
       ],
     );
   }
-
-  // Widget _timelineSection(ThemeData theme) {
-  //   return Column(
-  //     crossAxisAlignment: CrossAxisAlignment.start,
-  //     children: [
-  //       const SectionLabel("Today's Timeline"),
-  //       const SizedBox(height: 6),
-  //       AppCard(
-  //         padding: const EdgeInsets.all(16),
-  //         child: Column(
-  //           children: [
-  //             SizedBox(
-  //               height: 80,
-  //               child: Row(
-  //                 crossAxisAlignment: CrossAxisAlignment.end,
-  //                 children: _timelineData.map((d) {
-  //                   final val = d.$2;
-  //                   return Expanded(
-  //                     child: Padding(
-  //                       padding: const EdgeInsets.symmetric(horizontal: 4),
-  //                       child: FractionallySizedBox(
-  //                         heightFactor: val / 100,
-  //                         alignment: Alignment.bottomCenter,
-  //                         child: Container(
-  //                           decoration: BoxDecoration(
-  //                             color: val > 80 ? const Color(0xFFFF9800) : const Color(0xFF60A5FA),
-  //                             borderRadius: const BorderRadius.vertical(top: Radius.circular(5)),
-  //                           ),
-  //                         ),
-  //                       ),
-  //                     ),
-  //                   );
-  //                 }).toList(),
-  //               ),
-  //             ),
-  //             const SizedBox(height: 8),
-  //             Row(
-  //               mainAxisAlignment: MainAxisAlignment.spaceBetween,
-  //               children: _timelineData.map((d) {
-  //                 return Text(d.$1, style: TextStyle(fontSize: 10, color: theme.disabledColor));
-  //               }).toList(),
-  //             ),
-  //           ],
-  //         ),
-  //       ),
-  //     ],
-  //   );
-  // }
-
+ 
   Widget _metricRow(String label, String value, ThemeData theme) {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,

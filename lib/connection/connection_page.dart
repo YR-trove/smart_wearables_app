@@ -7,6 +7,7 @@ import 'package:smart_wearables_app/data/session_store.dart';
 import 'package:smart_wearables_app/main_shell.dart';
 import 'package:permission_handler/permission_handler.dart';
 
+
 // ── BLE Service / Characteristic UUIDs (RN4871 ISSP Transparent UART) ────────
 Uuid serviceUuid          = Uuid.parse("49535343-FE7D-4AE5-8FA9-9FAFD205E455");
 Uuid characteristicUuid   = Uuid.parse("49535343-1E4D-4BD9-BA61-23C647249616"); // RX (MCU → App)

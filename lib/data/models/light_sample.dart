@@ -1,7 +1,6 @@
 /// One light-sensor packet decoded from the BLE frame.
 /// 
 /// Note: In the v2 Edge Computing architecture, this model is used STRICTLY 
-/// for transient Developer Mode plotting via SensorBuffer. 
 /// It is NEVER persisted to SQLite.
 class LightSample {
   final int      sessionId;

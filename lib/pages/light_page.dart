@@ -78,12 +78,6 @@ class LightPage extends StatelessWidget {
                 ),
                 const SizedBox(height: 8),
                 _MetricRow(
-                  label: 'UV Index',
-                  value: store.currentUvIndex.toStringAsFixed(1),
-                  valueColor: primaryText,
-                ),
-                const SizedBox(height: 8),
-                _MetricRow(
                   label: 'Skin Burn Risk',
                   value: store.skinBurnRisk,
                   valueColor: _riskColor(store.skinBurnRisk),
@@ -121,15 +115,6 @@ class LightPage extends StatelessWidget {
                   color: const Color(0xFF5C6BC0),
                   goalLabel: 'Keep below 60 min for healthy sleep',
                 ),
-              ],
-            ),
-            const SizedBox(height: 12),
-            _LightCard(
-              icon: Icons.thermostat_rounded,
-              iconColor: const Color(0xFFEF5350),
-              title: 'Current UV Index',
-              children: [
-                _UvGauge(uvIndex: store.currentUvIndex),
               ],
             ),
           ],

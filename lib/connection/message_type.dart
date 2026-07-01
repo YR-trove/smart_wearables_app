@@ -21,15 +21,6 @@ enum MsgType {
   /// 2-byte connection-event packet (LIVE_START / LIVE_STOP).
   connectionEvent(0x53),
 
-  // ── Legacy / sync packets (kept for BLE-sync workflow) ────────────────────
-
-  /// TODO-REMOVE: Old 20-byte unified state frame (0x55). No longer sent
-  /// during ble_live mode. Remove once BLE-sync workflow is also migrated.
-  unifiedState(0x55), // TODO-REMOVE
-
-  /// TODO-REMOVE: HAR packet — not yet implemented on mainboard side.
-  har(0xe0), // TODO-REMOVE
-
   /// End-of-stream sentinel.
   end(0xff);
 

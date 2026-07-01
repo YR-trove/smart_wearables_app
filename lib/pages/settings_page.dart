@@ -4,14 +4,7 @@ import 'package:provider/provider.dart';
 import 'package:smart_wearables_app/theme_provider.dart'; // Adjust path if needed
 
 class SettingsPage extends StatefulWidget {
-  final bool devMode;
-  final ValueChanged<bool> onDevModeChanged;
-
-  const SettingsPage({
-    super.key,
-    required this.devMode,
-    required this.onDevModeChanged,
-  });
+  const SettingsPage({super.key});
 
   @override
   State<SettingsPage> createState() => _SettingsPageState();
@@ -50,8 +43,6 @@ class _SettingsPageState extends State<SettingsPage> {
         padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
         children: [
           _appearanceSection(),
-          const SizedBox(height: 24),
-          _developerSection(),
           const SizedBox(height: 24),
           _aboutSection(),
         ],
@@ -125,45 +116,6 @@ class _SettingsPageState extends State<SettingsPage> {
                     ),
                   ],
                 ),
-              ),
-            ],
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _developerSection() {
-    final mutedText = Theme.of(context).colorScheme.onSurfaceVariant;
-    final onSurfaceColor = Theme.of(context).colorScheme.onSurface;
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const SectionLabel('Developer'),
-        const SizedBox(height: 6),
-        AppCard(
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Text('Developer Mode', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w500, color: onSurfaceColor)),
-                  CupertinoSwitch(
-                    value: widget.devMode,
-                    onChanged: widget.onDevModeChanged,
-                    activeTrackColor: Theme.of(context).colorScheme.primary,
-                  ),
-                ],
-              ),
-              const SizedBox(height: 6),
-              Text(
-                widget.devMode
-                    ? 'Dashboard is visible. Firmware sending metrics Raw Packets.'
-                    : 'Enables 20Hz Raw Sensor Dashboard.',
-                style: TextStyle(fontSize: 13, color: mutedText, height: 1.4),
               ),
             ],
           ),

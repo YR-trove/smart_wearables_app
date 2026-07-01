@@ -1,5 +1,5 @@
 import 'dart:async';
-import 'package:flutter/foundation.dart';
+
 
 // ── ACK frame constants ───────────────────────────────────────────────────────
 /// Sent once immediately after BLE connection is established.
@@ -17,16 +17,6 @@ class MyStream {
   // 2. Outgoing commands / ACKs to the MCU (wired to BLE TX in connection_page)
   StreamController<List<int>> controllerSend = StreamController<List<int>>.broadcast();
 
-  /// TODO-REMOVE: controllerDevMode was the 20 Hz raw dev-mode stream.
-  /// No equivalent packet type exists in the ble_live workflow.
-  /// Remove this field (and all listeners) once the dev-dashboard is removed.
-  StreamController<List<int>> controllerDevMode =
-      StreamController<List<int>>.broadcast(); // TODO-REMOVE
-
-  /// TODO-REMOVE: controllerBattery was planned but never connected to a
-  /// real MCU packet. Remove once confirmed unused.
-  StreamController<List<int>> controllerBattery =
-      StreamController<List<int>>.broadcast(); // TODO-REMOVE
 
   /// Route a received raw packet to the correct stream.
   /// The live-mode protocol uses fixed-size packets with a leading msg_type
@@ -52,18 +42,4 @@ class MyStream {
     controllerSend.add(ackForPacket(msgType));
   }
 
-  /// TODO-REMOVE: sendAck() sent the old single-byte 0x06 ACK.
-  /// Replaced by sendConnectAck() and sendPacketAck(msgType).
-  /// Remove once all callers are updated.
-  void sendAck() { // TODO-REMOVE
-    debugPrint('MyStream.sendAck: deprecated — use sendPacketAck(msgType)'); // TODO-REMOVE
-    controllerSend.add(const [0x06]); // TODO-REMOVE
-  } // TODO-REMOVE
-
-  /// TODO-REMOVE: setMcuMode switched between 1 Hz metrics and 20 Hz raw mode.
-  /// The ble_live workflow has no equivalent mode-switch command.
-  /// Remove once settings page toggle is removed.
-  Future<void> setMcuMode(bool isRawMode) async { // TODO-REMOVE
-    debugPrint('MyStream.setMcuMode: no-op in ble_live workflow'); // TODO-REMOVE
-  } // TODO-REMOVE
 }

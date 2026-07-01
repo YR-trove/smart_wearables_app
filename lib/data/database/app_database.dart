@@ -84,8 +84,6 @@ class AppDatabase {
     // v4 → v5: Replace the single unified_telemetry table with three
     // per-packet-type tables that match the new ble_live mainboard protocol.
     if (oldVersion < 5) {
-      // TODO-REMOVE: Drop legacy unified_telemetry once BLE-sync is fully migrated.
-      await db.execute('DROP TABLE IF EXISTS unified_telemetry'); // TODO-REMOVE
       await _createLiveImu(db);
       await _createLiveLight(db);
       await _createLiveMic(db);
