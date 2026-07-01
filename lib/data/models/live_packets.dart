@@ -65,13 +65,26 @@ enum LightExposureClass {
 }
 
 // ----------------------------------------------------------------------------
-// Audio environment class — mirrors BleLiveEnvClass
+// Audio environment class — mirrors BleLiveEnvClass in ble_live_payload.h
+//
+//  0x00  veryQuiet    — LAeq < 35 dB
+//  0x01  quiet        — LAeq 35–44 dB
+//  0x02  moderate     — LAeq 45–54 dB
+//  0x03  lively       — LAeq 55–64 dB
+//  0x04  noisy        — LAeq 65–74 dB
+//  0x05  veryNoisy    — LAeq 75–84 dB
+//  0x06  highExposure — LAeq ≥ 85 dB
+//  0xFF  unavailable  — sensor not ready / invalid
 // ----------------------------------------------------------------------------
 enum AudioEnvClass {
-  quiet(0x00),
-  moderate(0x01),
-  loud(0x02),
-  veryLoud(0x03);
+  veryQuiet(0x00),
+  quiet(0x01),
+  moderate(0x02),
+  lively(0x03),
+  noisy(0x04),
+  veryNoisy(0x05),
+  highExposure(0x06),
+  unavailable(0xFF);
 
   final int value;
   const AudioEnvClass(this.value);
@@ -80,14 +93,18 @@ enum AudioEnvClass {
     for (final c in AudioEnvClass.values) {
       if (c.value == b) return c;
     }
-    return AudioEnvClass.quiet;
+    return AudioEnvClass.unavailable;
   }
 
   String get label => switch (this) {
-    AudioEnvClass.quiet    => 'Quiet',
-    AudioEnvClass.moderate => 'Moderate',
-    AudioEnvClass.loud     => 'Loud',
-    AudioEnvClass.veryLoud => 'Very Loud',
+    AudioEnvClass.veryQuiet    => 'Very Quiet',
+    AudioEnvClass.quiet        => 'Quiet',
+    AudioEnvClass.moderate     => 'Moderate',
+    AudioEnvClass.lively       => 'Lively',
+    AudioEnvClass.noisy        => 'Noisy',
+    AudioEnvClass.veryNoisy    => 'Very Noisy',
+    AudioEnvClass.highExposure => 'High Exposure',
+    AudioEnvClass.unavailable  => 'Unavailable',
   };
 }
 
