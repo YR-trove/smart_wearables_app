@@ -20,36 +20,44 @@ class _FitnessPageState extends State<FitnessPage> {
     return '$h:$m:$s';
   }
 
+  /// Maps the BLE LiveActivityState value to a display label.
+  /// 0x00=Unknown, 0x01=Stationary, 0x02=Walking, 0x03=Running
   String _activityLabel(int state) {
     switch (state) {
-      case 1:
-        return 'Walking';
       case 2:
+        return 'Walking';
+      case 3:
         return 'Running';
+      case 1:
+        return 'Stationary';
       default:
-        return 'Idle';
+        return 'Unknown';
     }
   }
 
   IconData _activityIcon(int state) {
     switch (state) {
-      case 1:
-        return Icons.directions_walk_rounded;
       case 2:
+        return Icons.directions_walk_rounded;
+      case 3:
         return Icons.directions_run_rounded;
-      default:
+      case 1:
         return Icons.self_improvement_rounded;
+      default:
+        return Icons.device_unknown_rounded;
     }
   }
 
   Color _activityColor(int state) {
     switch (state) {
-      case 1:
-        return const Color(0xFF43A047); // green
       case 2:
-        return const Color(0xFFE53935); // red
+        return const Color(0xFF43A047); // green  – walking
+      case 3:
+        return const Color(0xFFE53935); // red    – running
+      case 1:
+        return const Color(0xFF1E88E5); // blue   – stationary
       default:
-        return const Color(0xFF1E88E5); // blue
+        return const Color(0xFF757575); // grey   – unknown
     }
   }
 
@@ -58,9 +66,15 @@ class _FitnessPageState extends State<FitnessPage> {
     final store = context.watch<SessionStore>();
     final theme = Theme.of(context);
     final elapsed = store.elapsed;
-    
+
+    // ── Pull live BLE data from the latest IMU packet via SessionStore ──────
+    // store.currentSteps  → stepCount from LiveImuPacket (cumulative)
+    // store.activityState → activity.value from LiveImuPacket (0–3)
+    final int  liveSteps    = store.currentSteps;
+    final int  liveActivity = store.activityState;
+
     final primaryText = theme.colorScheme.onSurface;
-    final mutedText = theme.colorScheme.onSurfaceVariant;
+    final mutedText   = theme.colorScheme.onSurfaceVariant;
 
     return Scaffold(
       backgroundColor: theme.scaffoldBackgroundColor,
@@ -81,15 +95,15 @@ class _FitnessPageState extends State<FitnessPage> {
             padding: const EdgeInsets.only(right: 16),
             child: Chip(
               avatar: Icon(
-                _activityIcon(store.activityState),
+                _activityIcon(liveActivity),
                 color: Colors.white,
                 size: 16,
               ),
               label: Text(
-                _activityLabel(store.activityState),
-                style: const TextStyle(color: Colors.white, fontSize: 12), // Keep white for contrast on colored badge
+                _activityLabel(liveActivity),
+                style: const TextStyle(color: Colors.white, fontSize: 12),
               ),
-              backgroundColor: _activityColor(store.activityState),
+              backgroundColor: _activityColor(liveActivity),
               side: BorderSide.none,
               padding: EdgeInsets.zero,
             ),
@@ -119,7 +133,7 @@ class _FitnessPageState extends State<FitnessPage> {
                       icon: Icons.directions_walk_rounded,
                       iconColor: const Color(0xFF26C6DA),
                       label: 'Steps',
-                      value: store.currentSteps.toString(),
+                      value: liveSteps.toString(), // ← live from BLE
                       unit: 'steps',
                     ),
                   ),
@@ -145,7 +159,8 @@ class _FitnessPageState extends State<FitnessPage> {
                 children: [
                   Row(
                     children: [
-                      const Icon(Icons.local_fire_department_rounded, color: Color(0xFFEF5350), size: 22),
+                      const Icon(Icons.local_fire_department_rounded,
+                          color: Color(0xFFEF5350), size: 22),
                       const SizedBox(width: 8),
                       Text(
                         'Calories Burned',
@@ -172,10 +187,8 @@ class _FitnessPageState extends State<FitnessPage> {
                       const SizedBox(width: 6),
                       Padding(
                         padding: const EdgeInsets.only(bottom: 6),
-                        child: Text(
-                          'kcal',
-                          style: TextStyle(color: mutedText, fontSize: 16),
-                        ),
+                        child: Text('kcal',
+                            style: TextStyle(color: mutedText, fontSize: 16)),
                       ),
                     ],
                   ),
@@ -191,15 +204,15 @@ class _FitnessPageState extends State<FitnessPage> {
                 children: [
                   Row(
                     children: [
-                      const Icon(Icons.bar_chart_rounded, color: Color(0xFFAB47BC), size: 22),
+                      const Icon(Icons.bar_chart_rounded,
+                          color: Color(0xFFAB47BC), size: 22),
                       const SizedBox(width: 8),
-                      Text(
-                        'Weekly Steps',
-                        style: TextStyle(color: mutedText, fontSize: 14),
-                      ),
+                      Text('Weekly Steps',
+                          style: TextStyle(color: mutedText, fontSize: 14)),
                     ],
                   ),
                   const SizedBox(height: 16),
+                  // Weekly steps chart reads from the local DB — stays intact
                   const _WeeklyStepsChart(),
                 ],
               ),
@@ -259,7 +272,9 @@ class _BigStatTile extends StatelessWidget {
           children: [
             Icon(icon, color: iconColor, size: 18),
             const SizedBox(width: 6),
-            Text(label, style: TextStyle(color: theme.colorScheme.onSurfaceVariant, fontSize: 12)),
+            Text(label,
+                style: TextStyle(
+                    color: theme.colorScheme.onSurfaceVariant, fontSize: 12)),
           ],
         ),
         const SizedBox(height: 6),
@@ -279,7 +294,10 @@ class _BigStatTile extends StatelessWidget {
               const SizedBox(width: 4),
               Padding(
                 padding: const EdgeInsets.only(bottom: 4),
-                child: Text(unit, style: TextStyle(color: theme.colorScheme.onSurfaceVariant, fontSize: 14)),
+                child: Text(unit,
+                    style: TextStyle(
+                        color: theme.colorScheme.onSurfaceVariant,
+                        fontSize: 14)),
               ),
             ],
           ],
@@ -307,13 +325,15 @@ class _BurnBar extends StatelessWidget {
             value: progress,
             minHeight: 8,
             backgroundColor: theme.dividerColor.withValues(alpha: 0.1),
-            valueColor: const AlwaysStoppedAnimation<Color>(Color(0xFFEF5350)),
+            valueColor:
+                const AlwaysStoppedAnimation<Color>(Color(0xFFEF5350)),
           ),
         ),
         const SizedBox(height: 4),
         Text(
           '${(progress * 100).toStringAsFixed(0)}% of ${goalKcal.toInt()} kcal goal',
-          style: TextStyle(color: theme.colorScheme.onSurfaceVariant, fontSize: 11),
+          style: TextStyle(
+              color: theme.colorScheme.onSurfaceVariant, fontSize: 11),
         ),
       ],
     );
@@ -332,10 +352,18 @@ class _WeeklyStepsChart extends StatelessWidget {
       future: context.read<SessionStore>().sessionDao.weeklyStepSummary(),
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
-          return const SizedBox(height: 120, child: Center(child: CircularProgressIndicator()));
+          return const SizedBox(
+              height: 120,
+              child: Center(child: CircularProgressIndicator()));
         }
         if (!snapshot.hasData || snapshot.data!.isEmpty) {
-          return SizedBox(height: 120, child: Center(child: Text('No data for this week', style: TextStyle(color: theme.colorScheme.onSurfaceVariant))));
+          return SizedBox(
+              height: 120,
+              child: Center(
+                  child: Text('No data for this week',
+                      style: TextStyle(
+                          color:
+                              theme.colorScheme.onSurfaceVariant))));
         }
 
         final data = snapshot.data!;
@@ -360,12 +388,15 @@ class _WeeklyStepsChart extends StatelessWidget {
                         curve: Curves.easeOutCubic,
                         height: frac * 90,
                         decoration: BoxDecoration(
-                          color: theme.colorScheme.primary, // Dynamically use the theme accent
+                          color: theme.colorScheme.primary,
                           borderRadius: BorderRadius.circular(4),
                         ),
                       ),
                       const SizedBox(height: 4),
-                      Text(dayStr, style: TextStyle(color: theme.colorScheme.onSurfaceVariant, fontSize: 10)),
+                      Text(dayStr,
+                          style: TextStyle(
+                              color: theme.colorScheme.onSurfaceVariant,
+                              fontSize: 10)),
                     ],
                   ),
                 ),
