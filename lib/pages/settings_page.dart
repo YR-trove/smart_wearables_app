@@ -139,7 +139,7 @@ class _SettingsPageState extends State<SettingsPage> {
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Text('App Version', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w500, color: onSurfaceColor)),
-              Text('2.1.0 (Alpha Version)', style: TextStyle(fontSize: 13, color: mutedText)),
+              Text('2.2.0 (Beta Version)', style: TextStyle(fontSize: 13, color: mutedText)),
             ],
           ),
         ),
