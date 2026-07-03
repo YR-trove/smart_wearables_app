@@ -19,24 +19,6 @@ class _LightPageState extends State<LightPage> {
   // circle widget's display.
   bool _blueLightWarningShown = false;
 
-  String _formatSeconds(int s) {
-    if (s < 60) return '${s}s';
-    final m = s ~/ 60;
-    final rem = s % 60;
-    return '${m}m ${rem}s';
-  }
-
-  Color _riskColor(String risk) {
-    switch (risk) {
-      case 'High':
-        return const Color(0xFFEF5350);
-      case 'Moderate':
-        return const Color(0xFFFF9800);
-      default:
-        return const Color(0xFF66BB6A);
-    }
-  }
-
   /// Returns the display colour for the Environment Class circle.
   Color _envClassColor(LightExposureClass cls) {
     switch (cls) {
@@ -75,10 +57,10 @@ class _LightPageState extends State<LightPage> {
 
     // ── Night blue-light accumulator from SessionStore ──────────────────────
     final nightBlueSecs = store.nightBlueLightSeconds;
-    const int nightBlueLimitSecs = 3600; // 60 minutes
+    const int nightBlueLimitSecs = 3600; // 60 minutes // TODO: update the time threshold
 
+    
     // Show one-time popup when 60 min threshold is reached
-    // TODO: update the time threshold once clinical guidance is finalised
     if (nightBlueSecs >= nightBlueLimitSecs && !_blueLightWarningShown) {
       _blueLightWarningShown = true;
       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -144,34 +126,7 @@ class _LightPageState extends State<LightPage> {
                 ),
               ],
             ),
-            const SizedBox(height: 12),
-
-            // ── 3. Sunlight Exposure card ────────────────────────────────────
-            _LightCard(
-              icon:      Icons.wb_sunny_rounded,
-              iconColor: const Color(0xFFFFCA28),
-              title:     'Sunlight Exposure',
-              children: [
-                _MetricRow(
-                  label:      'Total Time',
-                  value:      _formatSeconds(store.sunlightSeconds),
-                  valueColor: primaryText,
-                ),
-                const SizedBox(height: 8),
-                _MetricRow(
-                  label:      'Skin Burn Risk',
-                  value:      store.skinBurnRisk,
-                  valueColor: _riskColor(store.skinBurnRisk),
-                ),
-                const SizedBox(height: 12),
-                _ExposureBar(
-                  seconds:     store.sunlightSeconds,
-                  goalSeconds: 1200,
-                  color:       const Color(0xFFFFCA28),
-                  goalLabel:   '20 min recommended daily',
-                ),
-              ],
-            ),
+            const SizedBox(height: 12), 
           ],
         ),
       ),
@@ -364,8 +319,6 @@ class _BlueLightNightCircle extends StatelessWidget {
             Text(
               // Condition note: only counts at night when blue-light
               // intensity exceeds an arbitrary threshold
-              // TODO: tune the night-hour window and intensity threshold
-              //       once user-study data is available
               'Night exposure (after 19:00)',
               style: TextStyle(
                   color: theme.colorScheme.onSurfaceVariant, fontSize: 12),
@@ -393,7 +346,6 @@ class _BlueLightNightCircle extends StatelessWidget {
         Align(
           alignment: Alignment.centerRight,
           child: Text(
-            // TODO: update the 60-min limit once clinical threshold is confirmed
             'Limit: 60 min for healthy sleep',
             style: TextStyle(
                 color: theme.colorScheme.onSurfaceVariant, fontSize: 11),
@@ -451,79 +403,6 @@ class _LightCard extends StatelessWidget {
           ...children,
         ],
       ),
-    );
-  }
-}
-
-class _MetricRow extends StatelessWidget {
-  final String label;
-  final String value;
-  final Color  valueColor;
-
-  const _MetricRow({
-    required this.label,
-    required this.value,
-    required this.valueColor,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-      children: [
-        Text(label,
-            style: TextStyle(
-                color: theme.colorScheme.onSurfaceVariant, fontSize: 13)),
-        Text(
-          value,
-          style: TextStyle(
-            color:      valueColor,
-            fontSize:   14,
-            fontWeight: FontWeight.w600,
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-class _ExposureBar extends StatelessWidget {
-  final int    seconds;
-  final int    goalSeconds;
-  final Color  color;
-  final String goalLabel;
-
-  const _ExposureBar({
-    required this.seconds,
-    required this.goalSeconds,
-    required this.color,
-    required this.goalLabel,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final theme    = Theme.of(context);
-    final progress = (seconds / goalSeconds).clamp(0.0, 1.0);
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.end,
-      children: [
-        ClipRRect(
-          borderRadius: BorderRadius.circular(6),
-          child: LinearProgressIndicator(
-            value:           progress,
-            minHeight:       8,
-            backgroundColor: theme.dividerColor.withValues(alpha: 0.1),
-            valueColor:      AlwaysStoppedAnimation<Color>(color),
-          ),
-        ),
-        const SizedBox(height: 4),
-        Text(
-          goalLabel,
-          style:
-              TextStyle(color: theme.colorScheme.onSurfaceVariant, fontSize: 11),
-        ),
-      ],
     );
   }
 }

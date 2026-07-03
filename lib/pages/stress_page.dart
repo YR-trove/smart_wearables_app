@@ -89,8 +89,7 @@ class _StressPageState extends State<StressPage> {
       _waveHistory.last = (currentSpl + jitter).clamp(10.0, 120.0);
 
       // Session-summary loud-time counter: only NOISY or VERY NOISY / HIGH
-      // TODO: adjust which classes count as "harmful" once threshold is
-      //       validated against the user study (currently: noisy and above)
+      // TODO: adjust which classes count as "harmful"
       if (currentEnv == AudioEnvClass.noisy ||
           currentEnv == AudioEnvClass.veryNoisy ||
           currentEnv == AudioEnvClass.highExposure) {
@@ -283,8 +282,6 @@ class _StressPageState extends State<StressPage> {
   // ── Notification / alert cards ───────────────────────────────────────────────
   // Fatigue card: based on accumulated dose.
   // Stress card: based on current envClass (NOISY or above triggers warning).
-  // TODO: refine the definition of "healthy" vs "stressful" once user-study
-  //       thresholds are established (currently: noisy class and above)
   Widget _alertCards(
     double        currentSpl,
     AudioEnvClass currentEnv,
@@ -292,7 +289,7 @@ class _StressPageState extends State<StressPage> {
   ) {
     final bool isHighDose = _accumulatedDosePct > 0.5;
 
-    // Stressful = NOISY, VERY NOISY, or HIGH EXPOSURE
+    // Stressful = NOISY, VERY NOISY, or HIGH EXPOSURE // TODO: refine the definition of "healthy" vs "stressful"
     final bool isStressful = currentEnv == AudioEnvClass.noisy ||
         currentEnv == AudioEnvClass.veryNoisy ||
         currentEnv == AudioEnvClass.highExposure;
