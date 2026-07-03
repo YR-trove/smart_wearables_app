@@ -43,7 +43,7 @@ class SessionStore extends ChangeNotifier {
   // ─── Fitness accumulators ──────────────────────────────────────────────────
 
   int    _currentSteps  = 0;
-  int    _activityState = 0;   // 0=Unknown/Stationary, 1=Walking, 2=Running
+  int    _activityState = 0;   // 0=Stationary/Idle, 1=Active
   double _distanceKm    = 0.0;
   double _totalKcal     = 0.0;
 
@@ -53,8 +53,7 @@ class SessionStore extends ChangeNotifier {
   double get totalKcal      => _totalKcal;
 
   String get activityLabel => switch (_activityState) {
-    1 => 'Walking',
-    2 => 'Running',
+    1 => 'Active',
     _ => 'Stationary',
   };
 
@@ -70,7 +69,7 @@ class SessionStore extends ChangeNotifier {
   String _skinBurnRisk          = 'Low';
   int    _circadianScore        = 100;
   String _lightExposureLabel    = '—';
-  int    _lightIntensity        = 0;   // 0–255
+  int    _blueClearRatio        = 0;
 
 
   int    get sunlightSeconds       => _sunlightSeconds;
@@ -78,7 +77,7 @@ class SessionStore extends ChangeNotifier {
   String get skinBurnRisk          => _skinBurnRisk;
   int    get circadianScore        => _circadianScore;
   String get lightExposureLabel    => _lightExposureLabel;
-  int    get lightIntensity        => _lightIntensity;
+  int    get blueClearRatio        => _blueClearRatio;
 
   SessionDao get sessionDao => _sessionDao;
 
@@ -181,7 +180,7 @@ class SessionStore extends ChangeNotifier {
     _skinBurnRisk          = 'Low';
     _circadianScore        = 100;
     _lightExposureLabel    = '—';
-    _lightIntensity        = 0;
+    _blueClearRatio        = 0;
 
     _stepsHistory.clear();
     _activityHistory.clear();
@@ -198,17 +197,20 @@ class SessionStore extends ChangeNotifier {
     unawaited(_sessionDao.insertImu(packet));
 
     _latestImu     = packet;
+    
+    int stepsDiff = packet.stepCount - _currentSteps;
+    if (stepsDiff < 0) stepsDiff += 65536; // handle 16-bit overflow
+    
+    _activityState = (stepsDiff > 0) ? 1 : 0;
     _currentSteps  = packet.stepCount;
-    _activityState = packet.activity.value;
 
     final heightCm = _currentUser?.heightCm ?? 170.0;
     _distanceKm = (_currentSteps * heightCm * 0.414) / 100000.0;
 
     final weightKg = _currentUser?.weightKg ?? 70.0;
     final met = switch (_activityState) {
-      2 => 5.0,
-      1 => 3.5,
-      _ => 0.0,
+      1 => 3.5, // Active
+      _ => 0.0, // Stationary
     };
     _totalKcal += (met * 3.5 * weightKg) / 12000.0;
 
@@ -217,7 +219,7 @@ class SessionStore extends ChangeNotifier {
       _activityHistory.removeAt(0);
     }
     _stepsHistory.add(packet.stepCount.toDouble());
-    _activityHistory.add(packet.activity.value.toDouble());
+    _activityHistory.add(_activityState.toDouble());
 
     notifyListeners();
   }
@@ -230,7 +232,7 @@ class SessionStore extends ChangeNotifier {
 
     _latestLight        = packet;
     _lightExposureLabel = packet.exposureClass.label;
-    _lightIntensity     = packet.intensity;
+    _blueClearRatio     = packet.blueClearRatio;
 
     // Sunlight accumulation — use Outdoor/Bright class as proxy
     if (packet.exposureClass == LightExposureClass.outdoor ||
@@ -250,7 +252,7 @@ class SessionStore extends ChangeNotifier {
     }
 
     if (_intensityHistory.length >= _maxBufferSize) _intensityHistory.removeAt(0);
-    _intensityHistory.add(packet.intensity.toDouble());
+    _intensityHistory.add(packet.blueClearRatio.toDouble());
 
     notifyListeners();
   }

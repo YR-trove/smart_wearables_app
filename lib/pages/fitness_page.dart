@@ -21,44 +21,16 @@ class _FitnessPageState extends State<FitnessPage> {
   }
 
   /// Maps the BLE LiveActivityState value to a display label.
-  /// 0x00=Unknown, 0x01=Stationary, 0x02=Walking, 0x03=Running
   String _activityLabel(int state) {
-    switch (state) {
-      case 2:
-        return 'Walking';
-      case 3:
-        return 'Running';
-      case 1:
-        return 'Stationary';
-      default:
-        return 'Unknown';
-    }
+    return state == 1 ? 'Active' : 'Stationary';
   }
 
   IconData _activityIcon(int state) {
-    switch (state) {
-      case 2:
-        return Icons.directions_walk_rounded;
-      case 3:
-        return Icons.directions_run_rounded;
-      case 1:
-        return Icons.self_improvement_rounded;
-      default:
-        return Icons.device_unknown_rounded;
-    }
+    return state == 1 ? Icons.directions_walk_rounded : Icons.self_improvement_rounded;
   }
 
   Color _activityColor(int state) {
-    switch (state) {
-      case 2:
-        return const Color(0xFF43A047); // green  – walking
-      case 3:
-        return const Color(0xFFE53935); // red    – running
-      case 1:
-        return const Color(0xFF1E88E5); // blue   – stationary
-      default:
-        return const Color(0xFF757575); // grey   – unknown
-    }
+    return state == 1 ? const Color(0xFF43A047) : const Color(0xFF1E88E5);
   }
 
   @override

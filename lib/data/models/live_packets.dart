@@ -127,26 +127,23 @@ enum LiveConnectionEvent {
 }
 
 // ============================================================================
-//  IMU metrics packet  — 7 bytes
+//  IMU metrics packet  — 4 bytes
 //
 //  | 0       | msg_type       = 0x50                   |
-//  | 1–4 LE  | step_count     uint32                   |
-//  | 5       | activity_state uint8                    |
-//  | 6       | reserved       0x00                     |
+//  | 1-2 LE  | step_count     uint16                   |
+//  | 3       | reserved       0x00                     |
 // ============================================================================
 class LiveImuPacket {
   final int?             id;
   final int              sessionId;
   final int              tsMs;
   final int              stepCount;    // cumulative steps since LIVE_START
-  final LiveActivityState activity;
 
   const LiveImuPacket({
     this.id,
     required this.sessionId,
     required this.tsMs,
     required this.stepCount,
-    required this.activity,
   });
 
   // ── Canonical parser ────────────────────────────────────────────────────────
@@ -155,13 +152,12 @@ class LiveImuPacket {
     required int sessionId,
     required int tsMs,
   }) {
-    assert(bytes.length >= 7, 'LiveImuPacket expects 7 bytes, got ${bytes.length}');
+    assert(bytes.length >= 4, 'LiveImuPacket expects 4 bytes, got ${bytes.length}');
     final bd = ByteData.sublistView(Uint8List.fromList(bytes));
     return LiveImuPacket(
       sessionId: sessionId,
       tsMs:      tsMs,
-      stepCount: bd.getUint32(1, Endian.little),
-      activity:  LiveActivityState.fromByte(bd.getUint8(5)),
+      stepCount: bd.getUint16(1, Endian.little),
     );
   }
 
@@ -171,7 +167,6 @@ class LiveImuPacket {
     'session_id':     sessionId,
     'ts_ms':          tsMs,
     'step_count':     stepCount,
-    'activity_state': activity.value,
   };
 
   factory LiveImuPacket.fromMap(Map<String, dynamic> m) => LiveImuPacket(
@@ -179,30 +174,29 @@ class LiveImuPacket {
     sessionId: m['session_id']     as int,
     tsMs:      m['ts_ms']          as int,
     stepCount: m['step_count']     as int,
-    activity:  LiveActivityState.fromByte(m['activity_state'] as int),
   );
 }
 
 // ============================================================================
-//  Light metrics packet  — 3 bytes
+//  Light metrics packet  — 4 bytes
 //
-//  | 0 | msg_type              = 0x51     |
-//  | 1 | exposure_class        uint8      |
-//  | 2 | light_color_intensity uint8 0–255|
+//  | 0     | msg_type              = 0x51     |
+//  | 1     | exposure_class        uint8      |
+//  | 2-3 LE| blue_clear_ratio      uint16     |
 // ============================================================================
 class LiveLightPacket {
   final int?              id;
   final int               sessionId;
   final int               tsMs;
   final LightExposureClass exposureClass;
-  final int               intensity;  // 0–255 normalised
+  final int               blueClearRatio;
 
   const LiveLightPacket({
     this.id,
     required this.sessionId,
     required this.tsMs,
     required this.exposureClass,
-    required this.intensity,
+    required this.blueClearRatio,
   });
 
   static LiveLightPacket fromBytes(
@@ -210,12 +204,13 @@ class LiveLightPacket {
     required int sessionId,
     required int tsMs,
   }) {
-    assert(bytes.length >= 3, 'LiveLightPacket expects 3 bytes, got ${bytes.length}');
+    assert(bytes.length >= 4, 'LiveLightPacket expects 4 bytes, got ${bytes.length}');
+    final bd = ByteData.sublistView(Uint8List.fromList(bytes));
     return LiveLightPacket(
       sessionId:     sessionId,
       tsMs:          tsMs,
       exposureClass: LightExposureClass.fromByte(bytes[1]),
-      intensity:     bytes[2],
+      blueClearRatio: bd.getUint16(2, Endian.little),
     );
   }
 
@@ -224,7 +219,7 @@ class LiveLightPacket {
     'session_id':     sessionId,
     'ts_ms':          tsMs,
     'exposure_class': exposureClass.value,
-    'intensity':      intensity,
+    'blue_clear_ratio': blueClearRatio,
   };
 
   factory LiveLightPacket.fromMap(Map<String, dynamic> m) => LiveLightPacket(
@@ -232,7 +227,7 @@ class LiveLightPacket {
     sessionId:     m['session_id']     as int,
     tsMs:          m['ts_ms']          as int,
     exposureClass: LightExposureClass.fromByte(m['exposure_class'] as int),
-    intensity:     m['intensity']      as int,
+    blueClearRatio: m['blue_clear_ratio'] as int,
   );
 }
 

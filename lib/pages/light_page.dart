@@ -36,11 +36,11 @@ class _LightPageState extends State<LightPage> {
   }
 
   /// Returns the foreground colour for the blue-light circle,
-  /// scaling from calm blue to red as intensity grows.
-  Color _blueLightIntensityColor(int intensity) {
-    if (intensity < 80) return const Color(0xFF42A5F5);  // calm blue
-    if (intensity < 160) return const Color(0xFF5C6BC0); // indigo
-    if (intensity < 210) return const Color(0xFFFF9800); // orange
+  /// scaling from calm blue to red as ratio grows.
+  Color _blueClearRatioColor(int ratio) {
+    if (ratio < 3000) return const Color(0xFF42A5F5);  // calm blue
+    if (ratio < 6000) return const Color(0xFF5C6BC0); // indigo
+    if (ratio < 8200) return const Color(0xFFFF9800); // orange
     return const Color(0xFFEF5350);                       // red
   }
 
@@ -51,9 +51,9 @@ class _LightPageState extends State<LightPage> {
     final primaryText = theme.colorScheme.onSurface;
 
     // ── Pull latest live light packet ────────────────────────────────────────
-    final latestLight = store.latestLight;
-    final envClass    = latestLight?.exposureClass ?? LightExposureClass.dark;
-    final intensity   = latestLight?.intensity     ?? 0;
+    final latestLight    = store.latestLight;
+    final envClass       = latestLight?.exposureClass ?? LightExposureClass.dark;
+    final blueClearRatio = latestLight?.blueClearRatio ?? 0;
 
     // ── Night blue-light accumulator from SessionStore ──────────────────────
     final nightBlueSecs = store.nightBlueLightSeconds;
@@ -121,8 +121,8 @@ class _LightPageState extends State<LightPage> {
                 _BlueLightNightCircle(
                   nightBlueSecs:   nightBlueSecs,
                   limitSecs:       nightBlueLimitSecs,
-                  intensity:       intensity,
-                  intensityColor:  _blueLightIntensityColor(intensity),
+                  blueClearRatio:  blueClearRatio,
+                  ratioColor:      _blueClearRatioColor(blueClearRatio),
                 ),
               ],
             ),
@@ -242,19 +242,19 @@ class _EnvironmentClassCard extends StatelessWidget {
 // ---------------------------------------------------------------------------
 // BlueLightNightCircle
 // Circle fills up to 60 min of qualifying blue-light night exposure.
-// Intensity is shown in the middle. Pop-up is handled by the parent.
+// Ratio is shown in the middle. Pop-up is handled by the parent.
 // ---------------------------------------------------------------------------
 class _BlueLightNightCircle extends StatelessWidget {
   final int   nightBlueSecs;
   final int   limitSecs;
-  final int   intensity;
-  final Color intensityColor;
+  final int   blueClearRatio;
+  final Color ratioColor;
 
   const _BlueLightNightCircle({
     required this.nightBlueSecs,
     required this.limitSecs,
-    required this.intensity,
-    required this.intensityColor,
+    required this.blueClearRatio,
+    required this.ratioColor,
   });
 
   String _formatExposure(int secs) {
@@ -282,7 +282,7 @@ class _BlueLightNightCircle extends StatelessWidget {
                     value:           progress,
                     strokeWidth:     10,
                     backgroundColor: theme.dividerColor.withValues(alpha: 0.1),
-                    valueColor:      AlwaysStoppedAnimation<Color>(intensityColor),
+                    valueColor:      AlwaysStoppedAnimation<Color>(ratioColor),
                     strokeCap:       StrokeCap.round,
                   ),
                 ),
@@ -290,15 +290,15 @@ class _BlueLightNightCircle extends StatelessWidget {
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     Text(
-                      '$intensity',
+                      '$blueClearRatio',
                       style: TextStyle(
-                        color:      intensityColor,
+                        color:      ratioColor,
                         fontSize:   36,
                         fontWeight: FontWeight.bold,
                       ),
                     ),
                     Text(
-                      'intensity',
+                      'blue/clear ratio',
                       style: TextStyle(
                         color:    theme.colorScheme.onSurfaceVariant,
                         fontSize: 11,
@@ -326,7 +326,7 @@ class _BlueLightNightCircle extends StatelessWidget {
             Text(
               _formatExposure(nightBlueSecs),
               style: TextStyle(
-                  color: intensityColor,
+                  color: ratioColor,
                   fontSize: 13,
                   fontWeight: FontWeight.w600),
             ),
@@ -339,7 +339,7 @@ class _BlueLightNightCircle extends StatelessWidget {
             value:           progress,
             minHeight:       6,
             backgroundColor: theme.dividerColor.withValues(alpha: 0.1),
-            valueColor:      AlwaysStoppedAnimation<Color>(intensityColor),
+            valueColor:      AlwaysStoppedAnimation<Color>(ratioColor),
           ),
         ),
         const SizedBox(height: 4),

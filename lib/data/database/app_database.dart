@@ -22,7 +22,7 @@ class AppDatabase {
     final path = join(await getDatabasesPath(), 'smart_wearables.db');
     return openDatabase(
       path,
-      version: 5,
+      version: 6,
       onCreate:    _onCreate,
       onUpgrade:   _onUpgrade,
       onConfigure: (db) async {
@@ -88,6 +88,14 @@ class AppDatabase {
       await _createLiveLight(db);
       await _createLiveMic(db);
     }
+    if (oldVersion < 6) {
+      await db.execute('DROP TABLE IF EXISTS live_imu');
+      await db.execute('DROP TABLE IF EXISTS live_light');
+      await db.execute('DROP TABLE IF EXISTS live_mic');
+      await _createLiveImu(db);
+      await _createLiveLight(db);
+      await _createLiveMic(db);
+    }
   }
 
   // ---------------------------------------------------------------------------
@@ -106,8 +114,7 @@ class AppDatabase {
         id             INTEGER PRIMARY KEY AUTOINCREMENT,
         session_id     INTEGER NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
         ts_ms          INTEGER NOT NULL,
-        step_count     INTEGER NOT NULL,
-        activity_state INTEGER NOT NULL
+        step_count     INTEGER NOT NULL
       )''');
     await db.execute(
         'CREATE INDEX idx_live_imu_ts ON live_imu(session_id, ts_ms)');
@@ -126,7 +133,7 @@ class AppDatabase {
         session_id     INTEGER NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
         ts_ms          INTEGER NOT NULL,
         exposure_class INTEGER NOT NULL,
-        intensity      INTEGER NOT NULL
+        blue_clear_ratio INTEGER NOT NULL
       )''');
     await db.execute(
         'CREATE INDEX idx_live_light_ts ON live_light(session_id, ts_ms)');

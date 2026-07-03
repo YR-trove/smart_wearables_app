@@ -14,8 +14,8 @@ Uuid characteristicUuid   = Uuid.parse("49535343-1E4D-4BD9-BA61-23C647249616"); 
 Uuid characteristicUuidTX = Uuid.parse("49535343-8841-43F4-A8D4-ECBE34729BB3"); // TX (App → MCU)
 
 // ── Live-mode packet minimum lengths (must match ble_live_payload.h) ─────────
-const int _kImuPacketLen       = 7; // 0x50
-const int _kLightPacketLen     = 3; // 0x51
+const int _kImuPacketLen       = 4; // 0x50
+const int _kLightPacketLen     = 4; // 0x51
 const int _kMicPacketLen       = 4; // 0x52
 const int _kConnectionEventLen = 2; // 0x53
 
