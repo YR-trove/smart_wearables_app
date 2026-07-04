@@ -6,7 +6,7 @@ A comprehensive Flutter application designed to interface with smart glasses and
 
 - **Unified BLE Telemetry:** Reads a robust 20-byte unified telemetry packet streamed at 2Hz containing IMU, Light, and Audio metrics.
 - **Fitness Tracking:** Real-time step counting, distance estimation, and calorie burn tracking.
-- **Light Environment & Circadian Rhythm:** Monitors ambient light exposure (Dark to Very Bright) and tracks blue-light exposure ratios to help protect sleep quality.
+- **Light Environment & Circadian Rhythm:** Monitors ambient light exposure (Dark to Very Bright), visualizes Color Temperature, and tracks blue-light exposure duration (requires ratio > 30% and intensity > Moderate after 7 PM) to protect sleep quality.
 - **Stress & Concentration Meter:** Evaluates ambient noise levels (LAeq dB) to classify the audio environment (Very Quiet to High Exposure) and computes a live Focus and Stress Index.
 - **Local Persistence:** Uses SQLite to store session data and aggregate historical trends without needing a cloud backend.
 - **Dynamic Theming:** Supports light and dark modes with customizable accent colors.
@@ -16,7 +16,7 @@ A comprehensive Flutter application designed to interface with smart glasses and
 - **Connection Page:** Manages BLE discovery, connects to the wearable, and handles the raw byte-level framing of the incoming data stream to ensure reliable telemetry processing.
 - **Dashboard:** A central hub providing an at-a-glance summary of all core metrics for the current active session.
 - **Fitness Page:** Focused on physical activity. Displays live step counts, calculates estimated distance in real time, tracks calories burned, and shows weekly step progression charts.
-- **Light Page:** Dedicated to ambient light and circadian rhythm tracking. Displays the current light intensity class and visually tracks the Blue-to-Clear light ratio via an intuitive circular gauge.
+- **Light Page:** Dedicated to ambient light and circadian rhythm tracking. Displays the current light intensity class, visually tracks the Blue-to-Clear light ratio via a circular gauge, and maps real-time Color Temperature (Kelvin) to a dynamic gradient bar.
 - **Stress & Noise Page:** Evaluates the acoustic environment in real-time. Features a dynamic noise waveform, WHO-based ear safety limits, and computes dual indices: a **Focus Index** (using light data) and a **Stress Index** (using noise data).
 
 ## Architecture & Tech Stack

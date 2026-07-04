@@ -54,6 +54,7 @@ class _LightPageState extends State<LightPage> {
     final latestUnified  = store.latestUnifiedPacket;
     final envClass       = latestUnified?.lightClass ?? LightExposureClass.dark;
     final blueClearRatio = latestUnified?.blueClearRatio ?? 0;
+    final colorTemp      = latestUnified?.colorTemp ?? 0;
 
     // ── Night blue-light accumulator from SessionStore ──────────────────────
     final nightBlueSecs = store.nightBlueLightSeconds;
@@ -126,7 +127,11 @@ class _LightPageState extends State<LightPage> {
                 ),
               ],
             ),
-            const SizedBox(height: 12), 
+            const SizedBox(height: 12),
+            
+            // ── 3. Color Temperature Bar ──────────────────────────
+            _ColorTemperatureCard(colorTemp: colorTemp),
+            const SizedBox(height: 12),
           ],
         ),
       ),
@@ -401,6 +406,121 @@ class _LightCard extends StatelessWidget {
           ),
           const SizedBox(height: 14),
           ...children,
+        ],
+      ),
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// ColorTemperatureCard
+// ---------------------------------------------------------------------------
+class _ColorTemperatureCard extends StatelessWidget {
+  final int colorTemp;
+
+  const _ColorTemperatureCard({required this.colorTemp});
+
+  /// Map Kelvin temperature to an approximate colour.
+  Color _tempToColor(int temp) {
+    if (temp <= 0) return Colors.grey;
+    if (temp < 3000) return const Color(0xFFFF8A65); // Warm / Deep Orange
+    if (temp < 4500) return const Color(0xFFFFD54F); // Warm White / Yellow
+    if (temp < 6000) return const Color(0xFFFFF176); // Daylight / Light Yellow
+    if (temp < 7500) return const Color(0xFF64B5F6); // Cool White / Light Blue
+    return const Color(0xFF1976D2);                  // Very Cool / Deep Blue
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final color = _tempToColor(colorTemp);
+
+    const gradient = LinearGradient(
+      colors: [
+        Color(0xFFFF8A65), // 2000K
+        Color(0xFFFFD54F), // 4000K
+        Color(0xFFFFF176), // 5500K
+        Color(0xFF64B5F6), // 7000K
+        Color(0xFF1976D2), // 8000K+
+      ],
+    );
+
+    // Calculate progress for the thumb marker (2000K to 8000K range)
+    final progress = ((colorTemp - 2000) / (8000 - 2000)).clamp(0.0, 1.0);
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color:        theme.cardColor,
+        borderRadius: BorderRadius.circular(14),
+        border:       Border.all(color: theme.dividerColor.withValues(alpha: 0.1)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.thermostat_rounded, color: color, size: 20),
+              const SizedBox(width: 8),
+              Text(
+                'Color Temperature',
+                style: TextStyle(
+                  color:      theme.colorScheme.onSurfaceVariant,
+                  fontSize:   14,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+              const Spacer(),
+              Text(
+                colorTemp > 0 ? '${colorTemp}K' : '—',
+                style: TextStyle(
+                  color:      theme.colorScheme.onSurface,
+                  fontSize:   16,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          Stack(
+            alignment: Alignment.centerLeft,
+            children: [
+              Container(
+                height: 14,
+                decoration: BoxDecoration(
+                  gradient: gradient,
+                  borderRadius: BorderRadius.circular(7),
+                ),
+              ),
+              if (colorTemp > 0)
+                Align(
+                  alignment: Alignment(
+                    -1.0 + (progress * 2.0), // maps 0.0-1.0 to -1.0 to 1.0
+                    0.0,
+                  ),
+                  child: Container(
+                    width: 4,
+                    height: 20,
+                    decoration: BoxDecoration(
+                      color: theme.colorScheme.onSurface,
+                      borderRadius: BorderRadius.circular(2),
+                      border: Border.all(
+                        color: theme.scaffoldBackgroundColor, 
+                        width: 1,
+                      ),
+                    ),
+                  ),
+                ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text('Warm', style: TextStyle(color: theme.colorScheme.onSurfaceVariant, fontSize: 11)),
+              Text('Cool', style: TextStyle(color: theme.colorScheme.onSurfaceVariant, fontSize: 11)),
+            ],
+          ),
         ],
       ),
     );

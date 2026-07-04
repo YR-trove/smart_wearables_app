@@ -20,8 +20,8 @@ The packet is wrapped with explicit `Start` and `End` sentinels to allow the rec
 | **4** | `Light Class` | `uint8` | `0`=Dark, `1`=Low Exp, `2`=Moderate Exp, `3`=High Exp, `4`=Very High Exp. |
 | **5** | `Blue/Clear (LSB)` | `uint16` (Little-Endian) | The lower byte of the Blue to Clear light ratio. |
 | **6** | `Blue/Clear (MSB)` | `uint16` (Little-Endian) | The upper byte of the Blue to Clear light ratio. |
-| **7** | `Reserved (LSB)` | `uint16` (Little-Endian) | Reserved for future use (currently `0x00`). |
-| **8** | `Reserved (MSB)` | `uint16` (Little-Endian) | Reserved for future use (currently `0x00`). |
+| **7** | `Color Temp (LSB)` | `uint16` (Little-Endian) | The lower byte of the color temperature (Kelvin). |
+| **8** | `Color Temp (MSB)` | `uint16` (Little-Endian) | The upper byte of the color temperature (Kelvin). |
 | **9** | `LAeq x10 (LSB)` | `uint16` (Little-Endian) | The lower byte of the Audio LAeq multiplied by 10 (e.g. `654` = 65.4 dB). |
 | **10** | `LAeq x10 (MSB)` | `uint16` (Little-Endian) | The upper byte of the Audio LAeq multiplied by 10. |
 | **11** | `Audio Env Class` | `uint8` | `1`=Very Quiet, `2`=Quiet, `3`=Moderate, `4`=Lively, `5`=Noisy, `6`=Very Noisy, `7`=High Exp. |

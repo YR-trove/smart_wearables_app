@@ -22,7 +22,7 @@ class AppDatabase {
     final path = join(await getDatabasesPath(), 'smart_wearables.db');
     return openDatabase(
       path,
-      version: 7,
+      version: 8,
       onCreate:    _onCreate,
       onUpgrade:   _onUpgrade,
       onConfigure: (db) async {
@@ -66,7 +66,7 @@ class AppDatabase {
 
   Future<void> _onUpgrade(Database db, int oldVersion, int newVersion) async {
     // Drop all old tables since we are in active dev and schema keeps shifting
-    if (oldVersion < 7) {
+    if (oldVersion < 8) {
       await db.execute('DROP TABLE IF EXISTS session_summary');
       await db.execute('DROP TABLE IF EXISTS sensor_snapshots');
       await db.execute('DROP TABLE IF EXISTS imu_data');
@@ -91,6 +91,7 @@ class AppDatabase {
         step_count       INTEGER NOT NULL,
         light_class      INTEGER NOT NULL,
         blue_clear_ratio INTEGER NOT NULL,
+        color_temp       INTEGER NOT NULL,
         laeq_x10         INTEGER NOT NULL,
         audio_class      INTEGER NOT NULL
       )''');

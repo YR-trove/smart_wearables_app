@@ -5,7 +5,8 @@
  * and ambient stress levels via Bluetooth Low Energy (BLE) smart glasses.
  * 
  * Features: Unified 20-byte BLE telemetry, local SQLite persistence, 
- * dynamic theming, and real-time Provider state management.
+ * dynamic theming, Color Temperature tracking, and real-time Provider 
+ * state management.
  */
 
 import 'package:flutter/material.dart';

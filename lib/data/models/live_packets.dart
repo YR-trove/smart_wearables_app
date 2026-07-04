@@ -123,6 +123,7 @@ enum LiveConnectionEvent {
 //  | 2-3 LE  | step_count     uint16                   |
 //  | 4       | light_class    uint8                    |
 //  | 5-6 LE  | blue_clear     uint16                   |
+//  | 7-8 LE  | color_temp     uint16                   |
 //  | 9-10 LE | laeq_x10       uint16                   |
 //  | 11      | audio_class    uint8                    |
 // ============================================================================
@@ -133,6 +134,7 @@ class UnifiedLivePacket {
   final int                stepCount;
   final LightExposureClass lightClass;
   final int                blueClearRatio;
+  final int                colorTemp;
   final int                laeqX10;
   final AudioEnvClass      audioClass;
 
@@ -143,6 +145,7 @@ class UnifiedLivePacket {
     required this.stepCount,
     required this.lightClass,
     required this.blueClearRatio,
+    required this.colorTemp,
     required this.laeqX10,
     required this.audioClass,
   });
@@ -165,6 +168,7 @@ class UnifiedLivePacket {
       stepCount:      bd.getUint16(2, Endian.little),
       lightClass:     LightExposureClass.fromByte(bytes[4]),
       blueClearRatio: bd.getUint16(5, Endian.little),
+      colorTemp:      bd.getUint16(7, Endian.little),
       laeqX10:        bd.getUint16(9, Endian.little),
       audioClass:     AudioEnvClass.fromByte(bytes[11]),
     );
@@ -178,6 +182,7 @@ class UnifiedLivePacket {
     'step_count':       stepCount,
     'light_class':      lightClass.value,
     'blue_clear_ratio': blueClearRatio,
+    'color_temp':       colorTemp,
     'laeq_x10':         laeqX10,
     'audio_class':      audioClass.value,
   };
@@ -189,6 +194,7 @@ class UnifiedLivePacket {
     stepCount:      m['step_count']       as int,
     lightClass:     LightExposureClass.fromByte(m['light_class'] as int),
     blueClearRatio: m['blue_clear_ratio'] as int,
+    colorTemp:      m['color_temp'] as int,
     laeqX10:        m['laeq_x10']         as int,
     audioClass:     AudioEnvClass.fromByte(m['audio_class'] as int),
   );
