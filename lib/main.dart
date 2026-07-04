@@ -1,9 +1,18 @@
+/*
+ * Smart Wearables App
+ * 
+ * A comprehensive Flutter application for monitoring fitness, light exposure, 
+ * and ambient stress levels via Bluetooth Low Energy (BLE) smart glasses.
+ * 
+ * Features: Unified 20-byte BLE telemetry, local SQLite persistence, 
+ * dynamic theming, and real-time Provider state management.
+ */
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:smart_wearables_app/data/session_store.dart';
 import 'package:smart_wearables_app/main_shell.dart';
 import 'package:smart_wearables_app/theme_provider.dart';
-
 
 void main() async {
   // Required before any async call or plugin use in main().
