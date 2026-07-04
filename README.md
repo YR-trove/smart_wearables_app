@@ -11,6 +11,14 @@ A comprehensive Flutter application designed to interface with smart glasses and
 - **Local Persistence:** Uses SQLite to store session data and aggregate historical trends without needing a cloud backend.
 - **Dynamic Theming:** Supports light and dark modes with customizable accent colors.
 
+## Pages Overview
+
+- **Connection Page:** Manages BLE discovery, connects to the wearable, and handles the raw byte-level framing of the incoming data stream to ensure reliable telemetry processing.
+- **Dashboard:** A central hub providing an at-a-glance summary of all core metrics for the current active session.
+- **Fitness Page:** Focused on physical activity. Displays live step counts, calculates estimated distance in real time, tracks calories burned, and shows weekly step progression charts.
+- **Light Page:** Dedicated to ambient light and circadian rhythm tracking. Displays the current light intensity class and visually tracks the Blue-to-Clear light ratio via an intuitive circular gauge.
+- **Stress & Noise Page:** Evaluates the acoustic environment in real-time. Features a dynamic noise waveform, WHO-based ear safety limits, and computes dual indices: a **Focus Index** (using light data) and a **Stress Index** (using noise data).
+
 ## Architecture & Tech Stack
 
 - **Framework:** [Flutter](https://flutter.dev/) (Dart)
