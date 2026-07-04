@@ -23,17 +23,12 @@ class SessionStore extends ChangeNotifier {
   DateTime?       _sessionStartTime;
 
   // Latest live packets — one per type, replaced on every RX
-  LiveImuPacket?   _latestImu;
-  LiveLightPacket? _latestLight;
-  LiveMicPacket?   _latestMic;
+  UnifiedLivePacket? _latestUnifiedPacket;
 
-
-  UserProfile?    get currentUser      => _currentUser;
-  SessionModel?   get activeSession    => _activeSession;
-  DateTime?       get sessionStartTime => _sessionStartTime;
-  LiveImuPacket?   get latestImu       => _latestImu;
-  LiveLightPacket? get latestLight     => _latestLight;
-  LiveMicPacket?   get latestMic       => _latestMic;
+  UserProfile?      get currentUser      => _currentUser;
+  SessionModel?     get activeSession    => _activeSession;
+  DateTime?         get sessionStartTime => _sessionStartTime;
+  UnifiedLivePacket? get latestUnifiedPacket => _latestUnifiedPacket;
 
   Duration get elapsed {
     if (_sessionStartTime == null) return Duration.zero;
@@ -59,8 +54,8 @@ class SessionStore extends ChangeNotifier {
 
   // ─── Audio ─────────────────────────────────────────────────────────────────
 
-  double get latestLaeqDb     => _latestMic?.laeqDb             ?? 0.0;
-  String get latestEnvLabel   => _latestMic?.envClass.label     ?? '—';
+  double get latestLaeqDb     => _latestUnifiedPacket?.laeqDb             ?? 0.0;
+  String get latestEnvLabel   => _latestUnifiedPacket?.audioClass.label   ?? '—';
 
   // ─── Light / photobiology accumulators ────────────────────────────────────
 
@@ -161,9 +156,7 @@ class SessionStore extends ChangeNotifier {
     await _sessionDao.closeSession(_activeSession!.id!, DateTime.now());
     debugPrint('SessionStore: session ${_activeSession!.id} closed.');
     _activeSession    = null;
-    _latestImu        = null;
-    _latestLight      = null;
-    _latestMic        = null;
+    _latestUnifiedPacket = null;
     _sessionStartTime = null;
     _resetAccumulators();
     notifyListeners();
@@ -190,14 +183,15 @@ class SessionStore extends ChangeNotifier {
 
   // ─── Live-mode packet handlers ────────────────────────────────────────────
 
-  /// Called by MainShell on every 0x50 IMU metrics packet (1 Hz).
-  Future<void> onImuPacket(LiveImuPacket packet) async {
+  /// Called by MainShell on every 0x55 Unified metrics packet (2 Hz).
+  Future<void> onUnifiedPacket(UnifiedLivePacket packet) async {
     if (_activeSession == null) return;
 
-    unawaited(_sessionDao.insertImu(packet));
+    unawaited(_sessionDao.insertUnifiedPacket(packet));
 
-    _latestImu     = packet;
+    _latestUnifiedPacket = packet;
     
+    // -- IMU Logic
     int stepsDiff = packet.stepCount - _currentSteps;
     if (stepsDiff < 0) stepsDiff += 65536; // handle 16-bit overflow
     
@@ -221,31 +215,23 @@ class SessionStore extends ChangeNotifier {
     _stepsHistory.add(packet.stepCount.toDouble());
     _activityHistory.add(_activityState.toDouble());
 
-    notifyListeners();
-  }
-
-  /// Called by MainShell on every 0x51 light metrics packet (3 Hz, change-gated).
-  Future<void> onLightPacket(LiveLightPacket packet) async {
-    if (_activeSession == null) return;
-
-    unawaited(_sessionDao.insertLight(packet));
-
-    _latestLight        = packet;
-    _lightExposureLabel = packet.exposureClass.label;
+    // -- Light Logic
+    _lightExposureLabel = packet.lightClass.label;
     _blueClearRatio     = packet.blueClearRatio;
 
-    // Sunlight accumulation — use Outdoor/Bright class as proxy
-    if (packet.exposureClass == LightExposureClass.outdoor ||
-        packet.exposureClass == LightExposureClass.bright) {
-      _sunlightSeconds += 3; // one env-epoch ≈ 3 s
+    // Sunlight accumulation (Very Bright is new Outdoor/Bright equiv)
+    if (packet.lightClass == LightExposureClass.veryBright ||
+        packet.lightClass == LightExposureClass.bright) {
+      _sunlightSeconds += 1; // 2Hz stream, roughly maybe scale? Let's just do +1
     }
 
-    // Night blue-light heuristic — Bright/Indoor after 19:00 risks circadian disruption.
+    // Night blue-light heuristic
     final hour = DateTime.now().hour;
     if (hour >= 19 &&
-        (packet.exposureClass == LightExposureClass.indoor ||
-         packet.exposureClass == LightExposureClass.bright)) {
-      _nightBlueLightSeconds += 3;
+        (packet.lightClass == LightExposureClass.moderate ||
+         packet.lightClass == LightExposureClass.bright ||
+         packet.lightClass == LightExposureClass.veryBright)) {
+      _nightBlueLightSeconds += 1;
       if (_nightBlueLightSeconds % 300 == 0 && _circadianScore > 0) {
         _circadianScore -= 1;
       }
@@ -254,17 +240,7 @@ class SessionStore extends ChangeNotifier {
     if (_intensityHistory.length >= _maxBufferSize) _intensityHistory.removeAt(0);
     _intensityHistory.add(packet.blueClearRatio.toDouble());
 
-    notifyListeners();
-  }
-
-  /// Called by MainShell on every 0x52 mic metrics packet (3 Hz, change-gated).
-  Future<void> onMicPacket(LiveMicPacket packet) async {
-    if (_activeSession == null) return;
-
-    unawaited(_sessionDao.insertMic(packet));
-
-    _latestMic = packet;
-
+    // -- Audio Logic
     if (_laeqHistory.length >= _maxBufferSize) _laeqHistory.removeAt(0);
     _laeqHistory.add(packet.laeqDb);
 
@@ -272,11 +248,8 @@ class SessionStore extends ChangeNotifier {
   }
 
   /// Called by MainShell when a 0x53 connection-event packet arrives.
-  /// Returns the ACK bytes to write back to the mainboard.
-  List<int> onConnectionEvent(LiveConnectionEvent event) {
+  void onConnectionEvent(LiveConnectionEvent event) {
     debugPrint('SessionStore: connection event → ${event.name}');
-    // ACK byte: single 0x06 (ASCII ACK)
-    return const [0x06];
   }
 
 }

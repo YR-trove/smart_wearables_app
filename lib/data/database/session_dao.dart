@@ -32,90 +32,42 @@ class SessionDao {
     return rows.isEmpty ? null : SessionModel.fromMap(rows.first);
   }
 
-  // ─── live_imu (0x50) ──────────────────────────────────────────────────────
+  // ─── Unified Telemetry (0x55) ──────────────────────────────────────────────
 
-  /// INSERT one IMU metrics row. Called on every 0x50 packet (~1 Hz).
-  Future<void> insertImu(LiveImuPacket row) async {
+  /// INSERT one unified metrics row. Called on every 0x55 packet (~2 Hz).
+  Future<void> insertUnifiedPacket(UnifiedLivePacket row) async {
     final db = await _db;
     await db.insert(
-      'live_imu',
+      'unified_telemetry',
       row.toMap(),
       conflictAlgorithm: ConflictAlgorithm.replace,
     );
   }
 
-  /// All IMU rows for [sessionId], chronological.
-  Future<List<LiveImuPacket>> getImuForSession(int sessionId) async {
+  /// All unified rows for [sessionId], chronological.
+  Future<List<UnifiedLivePacket>> getUnifiedForSession(int sessionId) async {
     final db   = await _db;
     final rows = await db.query(
-      'live_imu',
+      'unified_telemetry',
       where:    'session_id = ?',
       whereArgs: [sessionId],
       orderBy:  'ts_ms ASC',
     );
-    return rows.map(LiveImuPacket.fromMap).toList();
+    return rows.map(UnifiedLivePacket.fromMap).toList();
   }
 
-  /// Most-recent [limit] IMU rows for [sessionId], chronological.
-  Future<List<LiveImuPacket>> getRecentImu(
+  /// Most-recent [limit] unified rows for [sessionId], chronological.
+  Future<List<UnifiedLivePacket>> getRecentUnified(
       int sessionId, {int limit = 60}) async {
     final db   = await _db;
     final rows = await db.query(
-      'live_imu',
+      'unified_telemetry',
       where:    'session_id = ?',
       whereArgs: [sessionId],
       orderBy:  'ts_ms DESC',
       limit:    limit,
     );
-    return rows.map(LiveImuPacket.fromMap).toList().reversed.toList();
-  }
-
-  // ─── live_light (0x51) ────────────────────────────────────────────────────
-
-  /// INSERT one light metrics row. Called on every 0x51 packet (~3 s, change-gated).
-  Future<void> insertLight(LiveLightPacket row) async {
-    final db = await _db;
-    await db.insert(
-      'live_light',
-      row.toMap(),
-      conflictAlgorithm: ConflictAlgorithm.replace,
-    );
-  }
-
-  /// All light rows for [sessionId], chronological.
-  Future<List<LiveLightPacket>> getLightForSession(int sessionId) async {
-    final db   = await _db;
-    final rows = await db.query(
-      'live_light',
-      where:    'session_id = ?',
-      whereArgs: [sessionId],
-      orderBy:  'ts_ms ASC',
-    );
-    return rows.map(LiveLightPacket.fromMap).toList();
-  }
-
-  // ─── live_mic (0x52) ──────────────────────────────────────────────────────
-
-  /// INSERT one mic metrics row. Called on every 0x52 packet (~3 s, change-gated).
-  Future<void> insertMic(LiveMicPacket row) async {
-    final db = await _db;
-    await db.insert(
-      'live_mic',
-      row.toMap(),
-      conflictAlgorithm: ConflictAlgorithm.replace,
-    );
-  }
-
-  /// All mic rows for [sessionId], chronological.
-  Future<List<LiveMicPacket>> getMicForSession(int sessionId) async {
-    final db   = await _db;
-    final rows = await db.query(
-      'live_mic',
-      where:    'session_id = ?',
-      whereArgs: [sessionId],
-      orderBy:  'ts_ms ASC',
-    );
-    return rows.map(LiveMicPacket.fromMap).toList();
+    return rows.map(UnifiedLivePacket.fromMap).toList().reversed.toList();
   }
 
   // ─── Weekly step summary (Fitness bar chart) ───────────────────────────────
@@ -135,7 +87,7 @@ class SessionDao {
       SELECT
         substr(s.started_at, 1, 10) AS day,
         MAX(li.step_count)          AS steps
-      FROM live_imu li
+      FROM unified_telemetry li
       INNER JOIN sessions s ON s.id = li.session_id
       WHERE substr(s.started_at, 1, 10) >= ?
       GROUP BY substr(s.started_at, 1, 10)

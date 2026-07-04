@@ -14,19 +14,8 @@ Uuid characteristicUuid   = Uuid.parse("49535343-1E4D-4BD9-BA61-23C647249616"); 
 Uuid characteristicUuidTX = Uuid.parse("49535343-8841-43F4-A8D4-ECBE34729BB3"); // TX (App → MCU)
 
 // ── Live-mode packet minimum lengths (must match ble_live_payload.h) ─────────
-const int _kImuPacketLen       = 4; // 0x50
-const int _kLightPacketLen     = 4; // 0x51
-const int _kMicPacketLen       = 4; // 0x52
+const int _kUnifiedPacketLen   = 20; // 0x55
 const int _kConnectionEventLen = 2; // 0x53
-
-/// Returns the expected byte length for [msgType], or null if unknown.
-int? _packetLen(int msgType) => switch (msgType) {
-  0x50 => _kImuPacketLen,
-  0x51 => _kLightPacketLen,
-  0x52 => _kMicPacketLen,
-  0x53 => _kConnectionEventLen,
-  _    => null,
-};
 
 class ConnectionPage extends StatefulWidget {
   const ConnectionPage({super.key, required this.title});
@@ -238,45 +227,41 @@ class _ConnectionPageState extends State<ConnectionPage> {
         packetBuffer.addAll(chunk);
 
         // ── Live-mode framer ──────────────────────────────────────────────────
-        // Packets are bare fixed-size structs with a leading msg_type byte.
-        // No '{' / '}' wrappers — those belonged to the old unified frame.
+        // Packets are 20-byte structs with explicit Start (0x7B) and End (0x7D) wrappers
+        // and msg_type 0x55. Connection event (0x53) is 2 bytes.
         while (packetBuffer.isNotEmpty) {
-          final msgType  = packetBuffer[0];
-          final expected = _packetLen(msgType);
-
-          if (expected == null) {
-            // Unknown header byte — drop 1 byte and re-align.
-            debugPrint('RX: unknown msg_type 0x${msgType.toRadixString(16)} — skipping byte');
+          final firstByte = packetBuffer[0];
+          
+          if (firstByte == 0x7B) {
+            // Unified Telemetry packet wrapper
+            if (packetBuffer.length < _kUnifiedPacketLen) break; // wait for more bytes
+            
+            if (packetBuffer[1] == 0x55 && packetBuffer[19] == 0x7D) {
+              final packet = List<int>.unmodifiable(packetBuffer.sublist(0, _kUnifiedPacketLen));
+              packetBuffer.removeRange(0, _kUnifiedPacketLen);
+              incomingBLEStream.controller.add(packet);
+              debugPrint('RX ← MCU [0x55 Unified] 20 B');
+            } else {
+              // Corrupted wrapper, shift buffer
+              packetBuffer.removeAt(0);
+            }
+          } else if (firstByte == 0x53) {
+            // Connection event
+            if (packetBuffer.length < _kConnectionEventLen) break;
+            final packet = List<int>.unmodifiable(packetBuffer.sublist(0, _kConnectionEventLen));
+            packetBuffer.removeRange(0, _kConnectionEventLen);
+            incomingBLEStream.controller.add(packet);
+            debugPrint('RX ← MCU [0x53 Connection] 2 B');
+          } else {
+            // Unknown header
             packetBuffer.removeAt(0);
-            continue;
           }
-
-          if (packetBuffer.length < expected) break; // wait for rest of packet
-
-          // Extract the complete packet.
-          final packet = List<int>.unmodifiable(packetBuffer.sublist(0, expected));
-          packetBuffer.removeRange(0, expected);
-
-          // Forward to MainShell router.
-          incomingBLEStream.controller.add(packet);
-
-          // Per-packet ACK: [0xAA, msgType] — sync scheme.
-          incomingBLEStream.sendPacketAck(msgType);
-          debugPrint(
-            'RX ← MCU [0x${msgType.toRadixString(16).toUpperCase()}] '
-            '${packet.length} B → ACK [0xAA, 0x${msgType.toRadixString(16).toUpperCase()}]',
-          );
         }
       },
       onError: (dynamic error) => debugPrint('RX error: $error'),
     );
 
-    // ── Connection-established ACK: [0xAA, 0x01] ─────────────────────────────
-    // Sent after RX subscription is up so the MCU can start streaming
-    // immediately upon receiving the ACK.
-    await Future.delayed(const Duration(milliseconds: 100));
-    incomingBLEStream.sendConnectAck();
-    debugPrint('Connection ACK [0xAA, 0x01] sent to MCU');
+
 
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(

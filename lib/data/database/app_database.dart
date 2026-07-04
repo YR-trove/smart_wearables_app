@@ -22,7 +22,7 @@ class AppDatabase {
     final path = join(await getDatabasesPath(), 'smart_wearables.db');
     return openDatabase(
       path,
-      version: 6,
+      version: 7,
       onCreate:    _onCreate,
       onUpgrade:   _onUpgrade,
       onConfigure: (db) async {
@@ -32,7 +32,7 @@ class AppDatabase {
   }
 
   // ---------------------------------------------------------------------------
-  // Schema v5 — full creation (fresh install)
+  // Schema v7 — full creation (fresh install)
   // ---------------------------------------------------------------------------
 
   Future<void> _onCreate(Database db, int version) async {
@@ -57,9 +57,7 @@ class AppDatabase {
       )''');
     await db.execute('CREATE INDEX idx_sessions_user ON sessions(user_id)');
 
-    await _createLiveImu(db);
-    await _createLiveLight(db);
-    await _createLiveMic(db);
+    await _createUnifiedTelemetry(db);
   }
 
   // ---------------------------------------------------------------------------
@@ -67,34 +65,16 @@ class AppDatabase {
   // ---------------------------------------------------------------------------
 
   Future<void> _onUpgrade(Database db, int oldVersion, int newVersion) async {
-    if (oldVersion < 2) {
+    // Drop all old tables since we are in active dev and schema keeps shifting
+    if (oldVersion < 7) {
       await db.execute('DROP TABLE IF EXISTS session_summary');
       await db.execute('DROP TABLE IF EXISTS sensor_snapshots');
       await db.execute('DROP TABLE IF EXISTS imu_data');
-      // unified_telemetry created below in < 5 path
-    }
-    if (oldVersion < 3) {
-      await db.execute('DROP TABLE IF EXISTS unified_telemetry');
-      // unified_telemetry created below in < 5 path
-    }
-    if (oldVersion < 4) {
-      await db.execute('DROP TABLE IF EXISTS unified_telemetry');
-      // unified_telemetry created below in < 5 path
-    }
-    // v4 → v5: Replace the single unified_telemetry table with three
-    // per-packet-type tables that match the new ble_live mainboard protocol.
-    if (oldVersion < 5) {
-      await _createLiveImu(db);
-      await _createLiveLight(db);
-      await _createLiveMic(db);
-    }
-    if (oldVersion < 6) {
       await db.execute('DROP TABLE IF EXISTS live_imu');
       await db.execute('DROP TABLE IF EXISTS live_light');
       await db.execute('DROP TABLE IF EXISTS live_mic');
-      await _createLiveImu(db);
-      await _createLiveLight(db);
-      await _createLiveMic(db);
+      await db.execute('DROP TABLE IF EXISTS unified_telemetry');
+      await _createUnifiedTelemetry(db);
     }
   }
 
@@ -102,59 +82,19 @@ class AppDatabase {
   // Table DDL helpers
   // ---------------------------------------------------------------------------
 
-  /// live_imu — mirrors LiveImuPacket / BleLiveImuPayload (0x50, 7 bytes)
-  ///
-  /// | Column         | Type    | Source field                        |
-  /// |----------------|---------|-------------------------------------|
-  /// | step_count     | INTEGER | uint32 LE bytes [1-4]               |
-  /// | activity_state | INTEGER | uint8  byte  [5] (BleLiveActivity*) |
-  Future<void> _createLiveImu(Database db) async {
+  Future<void> _createUnifiedTelemetry(Database db) async {
     await db.execute('''
-      CREATE TABLE live_imu (
-        id             INTEGER PRIMARY KEY AUTOINCREMENT,
-        session_id     INTEGER NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
-        ts_ms          INTEGER NOT NULL,
-        step_count     INTEGER NOT NULL
+      CREATE TABLE unified_telemetry (
+        id               INTEGER PRIMARY KEY AUTOINCREMENT,
+        session_id       INTEGER NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+        ts_ms            INTEGER NOT NULL,
+        step_count       INTEGER NOT NULL,
+        light_class      INTEGER NOT NULL,
+        blue_clear_ratio INTEGER NOT NULL,
+        laeq_x10         INTEGER NOT NULL,
+        audio_class      INTEGER NOT NULL
       )''');
     await db.execute(
-        'CREATE INDEX idx_live_imu_ts ON live_imu(session_id, ts_ms)');
-  }
-
-  /// live_light — mirrors LiveLightPacket / BleLiveLightPayload (0x51, 3 bytes)
-  ///
-  /// | Column         | Type    | Source field                              |
-  /// |----------------|---------|-------------------------------------------|
-  /// | exposure_class | INTEGER | uint8 byte [1] (BleLiveLightExposure*)    |
-  /// | intensity      | INTEGER | uint8 byte [2] light_color_intensity 0-255|
-  Future<void> _createLiveLight(Database db) async {
-    await db.execute('''
-      CREATE TABLE live_light (
-        id             INTEGER PRIMARY KEY AUTOINCREMENT,
-        session_id     INTEGER NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
-        ts_ms          INTEGER NOT NULL,
-        exposure_class INTEGER NOT NULL,
-        blue_clear_ratio INTEGER NOT NULL
-      )''');
-    await db.execute(
-        'CREATE INDEX idx_live_light_ts ON live_light(session_id, ts_ms)');
-  }
-
-  /// live_mic — mirrors LiveMicPacket / BleLiveMicPayload (0x52, 4 bytes)
-  ///
-  /// | Column    | Type    | Source field                            |
-  /// |-----------|---------|-----------------------------------------|
-  /// | env_class | INTEGER | uint8  byte  [1] (BleLiveEnvClass*)     |
-  /// | laeq_x10  | INTEGER | uint16 LE bytes [2-3] (LAeq × 10 in dB)|
-  Future<void> _createLiveMic(Database db) async {
-    await db.execute('''
-      CREATE TABLE live_mic (
-        id         INTEGER PRIMARY KEY AUTOINCREMENT,
-        session_id INTEGER NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
-        ts_ms      INTEGER NOT NULL,
-        env_class  INTEGER NOT NULL,
-        laeq_x10   INTEGER NOT NULL
-      )''');
-    await db.execute(
-        'CREATE INDEX idx_live_mic_ts ON live_mic(session_id, ts_ms)');
+        'CREATE INDEX idx_unified_telemetry_ts ON unified_telemetry(session_id, ts_ms)');
   }
 }

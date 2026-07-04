@@ -22,11 +22,11 @@ class _LightPageState extends State<LightPage> {
   /// Returns the display colour for the Environment Class circle.
   Color _envClassColor(LightExposureClass cls) {
     switch (cls) {
-      case LightExposureClass.outdoor:
+      case LightExposureClass.veryBright:
         return const Color(0xFF66BB6A); // green  – outdoor/sunlight
       case LightExposureClass.bright:
         return const Color(0xFFFFCA28); // amber  – bright indoor
-      case LightExposureClass.indoor:
+      case LightExposureClass.moderate:
         return const Color(0xFF42A5F5); // blue   – normal indoor
       case LightExposureClass.dim:
         return const Color(0xFF78909C); // grey-blue – dim
@@ -51,9 +51,9 @@ class _LightPageState extends State<LightPage> {
     final primaryText = theme.colorScheme.onSurface;
 
     // ── Pull latest live light packet ────────────────────────────────────────
-    final latestLight    = store.latestLight;
-    final envClass       = latestLight?.exposureClass ?? LightExposureClass.dark;
-    final blueClearRatio = latestLight?.blueClearRatio ?? 0;
+    final latestUnified  = store.latestUnifiedPacket;
+    final envClass       = latestUnified?.lightClass ?? LightExposureClass.dark;
+    final blueClearRatio = latestUnified?.blueClearRatio ?? 0;
 
     // ── Night blue-light accumulator from SessionStore ──────────────────────
     final nightBlueSecs = store.nightBlueLightSeconds;
@@ -225,11 +225,11 @@ class _EnvironmentClassCard extends StatelessWidget {
 
   IconData _iconFor(LightExposureClass cls) {
     switch (cls) {
-      case LightExposureClass.outdoor:
+      case LightExposureClass.veryBright:
         return Icons.wb_sunny_rounded;
       case LightExposureClass.bright:
         return Icons.light_mode_rounded;
-      case LightExposureClass.indoor:
+      case LightExposureClass.moderate:
         return Icons.home_rounded;
       case LightExposureClass.dim:
         return Icons.nightlight_round;
@@ -290,7 +290,7 @@ class _BlueLightNightCircle extends StatelessWidget {
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     Text(
-                      '$blueClearRatio',
+                      '${(blueClearRatio / 100.0).ceil()}%',
                       style: TextStyle(
                         color:      ratioColor,
                         fontSize:   36,

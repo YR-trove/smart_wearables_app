@@ -20,18 +20,7 @@ class _FitnessPageState extends State<FitnessPage> {
     return '$h:$m:$s';
   }
 
-  /// Maps the BLE LiveActivityState value to a display label.
-  String _activityLabel(int state) {
-    return state == 1 ? 'Active' : 'Stationary';
-  }
 
-  IconData _activityIcon(int state) {
-    return state == 1 ? Icons.directions_walk_rounded : Icons.self_improvement_rounded;
-  }
-
-  Color _activityColor(int state) {
-    return state == 1 ? const Color(0xFF43A047) : const Color(0xFF1E88E5);
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -39,11 +28,8 @@ class _FitnessPageState extends State<FitnessPage> {
     final theme = Theme.of(context);
     final elapsed = store.elapsed;
 
-    // ── Pull live BLE data from the latest IMU packet via SessionStore ──────
     // store.currentSteps  → stepCount from LiveImuPacket (cumulative)
-    // store.activityState → activity.value from LiveImuPacket (0–3)
     final int  liveSteps    = store.currentSteps;
-    final int  liveActivity = store.activityState;
 
     final primaryText = theme.colorScheme.onSurface;
     final mutedText   = theme.colorScheme.onSurfaceVariant;
@@ -62,25 +48,6 @@ class _FitnessPageState extends State<FitnessPage> {
             fontSize: 20,
           ),
         ),
-        actions: [
-          Padding(
-            padding: const EdgeInsets.only(right: 16),
-            child: Chip(
-              avatar: Icon(
-                _activityIcon(liveActivity),
-                color: Colors.white,
-                size: 16,
-              ),
-              label: Text(
-                _activityLabel(liveActivity),
-                style: const TextStyle(color: Colors.white, fontSize: 12),
-              ),
-              backgroundColor: _activityColor(liveActivity),
-              side: BorderSide.none,
-              padding: EdgeInsets.zero,
-            ),
-          ),
-        ],
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16),

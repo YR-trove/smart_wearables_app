@@ -3,9 +3,7 @@ import 'dart:typed_data';
 // ============================================================================
 //  Live-mode BLE packet models
 //
-//  These three structs mirror the packed C structs in ble_live_payload.h.
-//  Each fromBytes() is the single canonical parse point — no byte-offset
-//  arithmetic anywhere else in the app.
+//  These structs mirror the unified 20-byte packed C struct.
 // ============================================================================
 
 // ----------------------------------------------------------------------------
@@ -36,14 +34,14 @@ enum LiveActivityState {
 }
 
 // ----------------------------------------------------------------------------
-// Light exposure class — mirrors BleLiveLightExposureClass
+// Light exposure class — 0=Dark, 1=Dim, 2=Moderate, 3=Bright, 4=Very Bright.
 // ----------------------------------------------------------------------------
 enum LightExposureClass {
   dark(0x00),
   dim(0x01),
-  indoor(0x02),
+  moderate(0x02),
   bright(0x03),
-  outdoor(0x04);
+  veryBright(0x04);
 
   final int value;
   const LightExposureClass(this.value);
@@ -56,34 +54,26 @@ enum LightExposureClass {
   }
 
   String get label => switch (this) {
-    LightExposureClass.dark    => 'Dark',
-    LightExposureClass.dim     => 'Dim',
-    LightExposureClass.indoor  => 'Indoor',
-    LightExposureClass.bright  => 'Bright',
-    LightExposureClass.outdoor => 'Outdoor',
+    LightExposureClass.dark       => 'Dark',
+    LightExposureClass.dim        => 'Dim',
+    LightExposureClass.moderate   => 'Moderate',
+    LightExposureClass.bright     => 'Bright',
+    LightExposureClass.veryBright => 'Very Bright',
   };
 }
 
 // ----------------------------------------------------------------------------
-// Audio environment class — mirrors BleLiveEnvClass in ble_live_payload.h
-//
-//  0x00  veryQuiet    — LAeq < 35 dB
-//  0x01  quiet        — LAeq 35–44 dB
-//  0x02  moderate     — LAeq 45–54 dB
-//  0x03  lively       — LAeq 55–64 dB
-//  0x04  noisy        — LAeq 65–74 dB
-//  0x05  veryNoisy    — LAeq 75–84 dB
-//  0x06  highExposure — LAeq ≥ 85 dB
-//  0xFF  unavailable  — sensor not ready / invalid
+// Audio environment class
+// 1=Very Quiet, 2=Quiet, 3=Moderate, 4=Lively, 5=Noisy, 6=Very Noisy, 7=High Exp
 // ----------------------------------------------------------------------------
 enum AudioEnvClass {
-  veryQuiet(0x00),
-  quiet(0x01),
-  moderate(0x02),
-  lively(0x03),
-  noisy(0x04),
-  veryNoisy(0x05),
-  highExposure(0x06),
+  veryQuiet(0x01),
+  quiet(0x02),
+  moderate(0x03),
+  lively(0x04),
+  noisy(0x05),
+  veryNoisy(0x06),
+  highExposure(0x07),
   unavailable(0xFF);
 
   final int value;
@@ -127,163 +117,79 @@ enum LiveConnectionEvent {
 }
 
 // ============================================================================
-//  IMU metrics packet  — 4 bytes
+//  Unified Metrics packet  — 20 bytes
 //
-//  | 0       | msg_type       = 0x50                   |
-//  | 1-2 LE  | step_count     uint16                   |
-//  | 3       | reserved       0x00                     |
+//  | 0       | msg_type       = 0x55                   |
+//  | 2-3 LE  | step_count     uint16                   |
+//  | 4       | light_class    uint8                    |
+//  | 5-6 LE  | blue_clear     uint16                   |
+//  | 9-10 LE | laeq_x10       uint16                   |
+//  | 11      | audio_class    uint8                    |
 // ============================================================================
-class LiveImuPacket {
-  final int?             id;
-  final int              sessionId;
-  final int              tsMs;
-  final int              stepCount;    // cumulative steps since LIVE_START
+class UnifiedLivePacket {
+  final int?               id;
+  final int                sessionId;
+  final int                tsMs;
+  final int                stepCount;
+  final LightExposureClass lightClass;
+  final int                blueClearRatio;
+  final int                laeqX10;
+  final AudioEnvClass      audioClass;
 
-  const LiveImuPacket({
+  const UnifiedLivePacket({
     this.id,
     required this.sessionId,
     required this.tsMs,
     required this.stepCount,
+    required this.lightClass,
+    required this.blueClearRatio,
+    required this.laeqX10,
+    required this.audioClass,
   });
 
+  double get laeqDb => laeqX10 / 10.0;
+  double get actualRatio => blueClearRatio / 10000.0;
+
   // ── Canonical parser ────────────────────────────────────────────────────────
-  static LiveImuPacket fromBytes(
+  static UnifiedLivePacket fromBytes(
     List<int> bytes, {
     required int sessionId,
     required int tsMs,
   }) {
-    assert(bytes.length >= 4, 'LiveImuPacket expects 4 bytes, got ${bytes.length}');
+    assert(bytes.length >= 20, 'UnifiedLivePacket expects 20 bytes, got ${bytes.length}');
     final bd = ByteData.sublistView(Uint8List.fromList(bytes));
-    return LiveImuPacket(
-      sessionId: sessionId,
-      tsMs:      tsMs,
-      stepCount: bd.getUint16(1, Endian.little),
+    
+    return UnifiedLivePacket(
+      sessionId:      sessionId,
+      tsMs:           tsMs,
+      stepCount:      bd.getUint16(2, Endian.little),
+      lightClass:     LightExposureClass.fromByte(bytes[4]),
+      blueClearRatio: bd.getUint16(5, Endian.little),
+      laeqX10:        bd.getUint16(9, Endian.little),
+      audioClass:     AudioEnvClass.fromByte(bytes[11]),
     );
   }
 
   // ── SQLite persistence ──────────────────────────────────────────────────────
   Map<String, dynamic> toMap() => {
     if (id != null) 'id': id,
-    'session_id':     sessionId,
-    'ts_ms':          tsMs,
-    'step_count':     stepCount,
-  };
-
-  factory LiveImuPacket.fromMap(Map<String, dynamic> m) => LiveImuPacket(
-    id:        m['id']             as int?,
-    sessionId: m['session_id']     as int,
-    tsMs:      m['ts_ms']          as int,
-    stepCount: m['step_count']     as int,
-  );
-}
-
-// ============================================================================
-//  Light metrics packet  — 4 bytes
-//
-//  | 0     | msg_type              = 0x51     |
-//  | 1     | exposure_class        uint8      |
-//  | 2-3 LE| blue_clear_ratio      uint16     |
-// ============================================================================
-class LiveLightPacket {
-  final int?              id;
-  final int               sessionId;
-  final int               tsMs;
-  final LightExposureClass exposureClass;
-  final int               blueClearRatio;
-
-  const LiveLightPacket({
-    this.id,
-    required this.sessionId,
-    required this.tsMs,
-    required this.exposureClass,
-    required this.blueClearRatio,
-  });
-
-  static LiveLightPacket fromBytes(
-    List<int> bytes, {
-    required int sessionId,
-    required int tsMs,
-  }) {
-    assert(bytes.length >= 4, 'LiveLightPacket expects 4 bytes, got ${bytes.length}');
-    final bd = ByteData.sublistView(Uint8List.fromList(bytes));
-    return LiveLightPacket(
-      sessionId:     sessionId,
-      tsMs:          tsMs,
-      exposureClass: LightExposureClass.fromByte(bytes[1]),
-      blueClearRatio: bd.getUint16(2, Endian.little),
-    );
-  }
-
-  Map<String, dynamic> toMap() => {
-    if (id != null) 'id': id,
-    'session_id':     sessionId,
-    'ts_ms':          tsMs,
-    'exposure_class': exposureClass.value,
+    'session_id':       sessionId,
+    'ts_ms':            tsMs,
+    'step_count':       stepCount,
+    'light_class':      lightClass.value,
     'blue_clear_ratio': blueClearRatio,
+    'laeq_x10':         laeqX10,
+    'audio_class':      audioClass.value,
   };
 
-  factory LiveLightPacket.fromMap(Map<String, dynamic> m) => LiveLightPacket(
-    id:            m['id']             as int?,
-    sessionId:     m['session_id']     as int,
-    tsMs:          m['ts_ms']          as int,
-    exposureClass: LightExposureClass.fromByte(m['exposure_class'] as int),
+  factory UnifiedLivePacket.fromMap(Map<String, dynamic> m) => UnifiedLivePacket(
+    id:             m['id']               as int?,
+    sessionId:      m['session_id']       as int,
+    tsMs:           m['ts_ms']            as int,
+    stepCount:      m['step_count']       as int,
+    lightClass:     LightExposureClass.fromByte(m['light_class'] as int),
     blueClearRatio: m['blue_clear_ratio'] as int,
-  );
-}
-
-// ============================================================================
-//  Mic metrics packet  — 4 bytes
-//
-//  | 0     | msg_type          = 0x52              |
-//  | 1     | environment_class uint8               |
-//  | 2–3LE | laeq_x10          uint16  (/ 10.0 → dB)|
-// ============================================================================
-class LiveMicPacket {
-  final int?          id;
-  final int           sessionId;
-  final int           tsMs;
-  final AudioEnvClass envClass;
-  final int           laeqX10;    // LAeq × 10  (e.g. 653 → 65.3 dB)
-
-  const LiveMicPacket({
-    this.id,
-    required this.sessionId,
-    required this.tsMs,
-    required this.envClass,
-    required this.laeqX10,
-  });
-
-  /// LAeq in dB as a double.
-  double get laeqDb => laeqX10 / 10.0;
-
-  static LiveMicPacket fromBytes(
-    List<int> bytes, {
-    required int sessionId,
-    required int tsMs,
-  }) {
-    assert(bytes.length >= 4, 'LiveMicPacket expects 4 bytes, got ${bytes.length}');
-    final bd = ByteData.sublistView(Uint8List.fromList(bytes));
-    return LiveMicPacket(
-      sessionId: sessionId,
-      tsMs:      tsMs,
-      envClass:  AudioEnvClass.fromByte(bytes[1]),
-      laeqX10:   bd.getUint16(2, Endian.little),
-    );
-  }
-
-  Map<String, dynamic> toMap() => {
-    if (id != null) 'id': id,
-    'session_id': sessionId,
-    'ts_ms':      tsMs,
-    'env_class':  envClass.value,
-    'laeq_x10':   laeqX10,
-  };
-
-  factory LiveMicPacket.fromMap(Map<String, dynamic> m) => LiveMicPacket(
-    id:        m['id']         as int?,
-    sessionId: m['session_id'] as int,
-    tsMs:      m['ts_ms']      as int,
-    envClass:  AudioEnvClass.fromByte(m['env_class'] as int),
-    laeqX10:   m['laeq_x10']  as int,
+    laeqX10:        m['laeq_x10']         as int,
+    audioClass:     AudioEnvClass.fromByte(m['audio_class'] as int),
   );
 }

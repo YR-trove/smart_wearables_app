@@ -71,9 +71,15 @@ class _MainShellState extends State<MainShell> {
   void _onPacket(List<int> data) {
     if (data.isEmpty) return;
 
-    final msgType = MsgType.fromByte(data[0]);
+    int typeByte = data[0];
+    // If the packet starts with the 0x7B sentinel (Unified Packet wrapper), the type is at data[1]
+    if (typeByte == 0x7B && data.length >= 2) {
+      typeByte = data[1];
+    }
+
+    final msgType = MsgType.fromByte(typeByte);
     if (msgType == null) {
-      debugPrint('MainShell: unknown msg_type 0x${data[0].toRadixString(16).toUpperCase()}');
+      debugPrint('MainShell: unknown msg_type 0x${typeByte.toRadixString(16).toUpperCase()}');
       return;
     }
 
@@ -83,31 +89,18 @@ class _MainShellState extends State<MainShell> {
 
     switch (msgType) {
 
-      // ── IMU metrics (0x50, 7 bytes, 1 Hz) ─────────────────────────────────
-      case MsgType.imuMetrics:
+      // ── Unified metrics (0x55, 20 bytes, 2 Hz) ──────────────────────────────
+      case MsgType.unifiedMetrics:
         if (sessionId == null) return;
-        final packet = LiveImuPacket.fromBytes(data, sessionId: sessionId, tsMs: tsMs);
-        store.onImuPacket(packet);
-
-      // ── Light metrics (0x51, 3 bytes, ~3 s change-gated) ──────────────────
-      case MsgType.lightMetrics:
-        if (sessionId == null) return;
-        final packet = LiveLightPacket.fromBytes(data, sessionId: sessionId, tsMs: tsMs);
-        store.onLightPacket(packet);
-
-      // ── Mic metrics (0x52, 4 bytes, ~3 s change-gated) ────────────────────
-      case MsgType.micMetrics:
-        if (sessionId == null) return;
-        final packet = LiveMicPacket.fromBytes(data, sessionId: sessionId, tsMs: tsMs);
-        store.onMicPacket(packet);
+        final packet = UnifiedLivePacket.fromBytes(data, sessionId: sessionId, tsMs: tsMs);
+        store.onUnifiedPacket(packet);
 
       // ── Connection event (0x53, 2 bytes) ──────────────────────────────────
       case MsgType.connectionEvent:
         if (data.length < 2) return;
         final event = LiveConnectionEvent.fromByte(data[1]);
         if (event == null) return;
-        final ack = store.onConnectionEvent(event);
-        widget.stream?.sendData(ack);
+        store.onConnectionEvent(event);
 
       case MsgType.end:
         debugPrint('MainShell: end-of-stream packet received.');

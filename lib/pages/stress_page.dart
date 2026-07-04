@@ -13,12 +13,8 @@ class StressPage extends StatefulWidget {
 
 class _StressPageState extends State<StressPage> {
   // ── Live state ─────────────────────────────────────────────────────────────
-  double _peakNoise         = 0.0; // max dB reached in the session
   double _accumulatedDosePct = 0.0;
   int    _lastElapsedSeconds = 0;
-
-  // Duration spent in LOUD / Very Loud classes (counted by session summary)
-  Duration _loudExposure = Duration.zero;
 
   // Rolling buffer for live audio visualiser (19 bars)
   final List<double> _waveHistory = List.filled(19, 10.0);
@@ -52,10 +48,7 @@ class _StressPageState extends State<StressPage> {
   /// Realistic mapping: quiet → short, loud → tall, same range as spec.
   double _barHeightFor(double db) => (db * 0.4).clamp(4.0, 48.0);
 
-  String _formatDuration(Duration d) {
-    String two(int n) => n.toString().padLeft(2, '0');
-    return '${d.inHours}h ${two(d.inMinutes.remainder(60))}m';
-  }
+
 
   @override
   Widget build(BuildContext context) {
@@ -67,7 +60,7 @@ class _StressPageState extends State<StressPage> {
     // store.latestEnvLabel → LiveMicPacket.envClass.label
     final double       currentSpl = sessionStore.latestLaeqDb;
     final AudioEnvClass currentEnv =
-        sessionStore.latestMic?.envClass ?? AudioEnvClass.unavailable;
+        sessionStore.latestUnifiedPacket?.audioClass ?? AudioEnvClass.unavailable;
     final Color        noiseColor = _noiseColor(currentEnv, theme);
 
     final elapsedSeconds = sessionStore.elapsed.inSeconds;
@@ -76,8 +69,7 @@ class _StressPageState extends State<StressPage> {
     if (elapsedSeconds > _lastElapsedSeconds) {
       final int deltaS = elapsedSeconds - _lastElapsedSeconds;
 
-      // Update peak noise with the actual max dB
-      if (currentSpl > _peakNoise) _peakNoise = currentSpl;
+
 
       // Advance the waveform buffer
       for (int i = 0; i < _waveHistory.length - 1; i++) {
@@ -88,13 +80,7 @@ class _StressPageState extends State<StressPage> {
       final jitter = (Random().nextDouble() - 0.5) * jitterAmount;
       _waveHistory.last = (currentSpl + jitter).clamp(10.0, 120.0);
 
-      // Session-summary loud-time counter: only NOISY or VERY NOISY / HIGH
-      // TODO: adjust which classes count as "harmful"
-      if (currentEnv == AudioEnvClass.noisy ||
-          currentEnv == AudioEnvClass.veryNoisy ||
-          currentEnv == AudioEnvClass.highExposure) {
-        _loudExposure += Duration(seconds: deltaS);
-      }
+
 
       // Accumulated acoustic dose (NIOSH / WHO model)
       if (currentSpl >= 70) {
@@ -114,12 +100,10 @@ class _StressPageState extends State<StressPage> {
         children: [
           _noiseHero(currentSpl, currentEnv, noiseColor, theme),
           const SizedBox(height: 20),
-          _summarySection(theme),
-          const SizedBox(height: 20),
           // ── Safety limit moved directly below session summary ────────────
           _earSafetySection(theme),
           const SizedBox(height: 20),
-          _alertCards(currentSpl, currentEnv, theme),
+          _alertCards(currentSpl, currentEnv, theme, sessionStore),
         ],
       ),
     );
@@ -199,35 +183,7 @@ class _StressPageState extends State<StressPage> {
     );
   }
 
-  // ── Session summary ──────────────────────────────────────────────────────────
-  // Exposure time counts only seconds spent in NOISY / VERY NOISY / HIGH class.
-  // Peak noise = highest dB value reached.
-  Widget _summarySection(ThemeData theme) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const SectionLabel('Session Summary'),
-        const SizedBox(height: 6),
-        AppCard(
-          child: Column(
-            children: [
-              _metricRow(
-                'Loud Exposure',
-                _formatDuration(_loudExposure),
-                theme,
-              ),
-              const SizedBox(height: 12),
-              _metricRow(
-                'Peak Noise',
-                '${_peakNoise.toStringAsFixed(1)} dB',
-                theme,
-              ),
-            ],
-          ),
-        ),
-      ],
-    );
-  }
+
 
   // ── Ear safety limit ─────────────────────────────────────────────────────────
   Widget _earSafetySection(ThemeData theme) {
@@ -280,37 +236,68 @@ class _StressPageState extends State<StressPage> {
   }
 
   // ── Notification / alert cards ───────────────────────────────────────────────
-  // Fatigue card: based on accumulated dose.
+  // Focus card: based on current lightClass
   // Stress card: based on current envClass (NOISY or above triggers warning).
   Widget _alertCards(
     double        currentSpl,
     AudioEnvClass currentEnv,
     ThemeData     theme,
+    SessionStore  sessionStore,
   ) {
-    final bool isHighDose = _accumulatedDosePct > 0.5;
+    final LightExposureClass currentLight =
+        sessionStore.latestUnifiedPacket?.lightClass ?? LightExposureClass.dark;
+    
+    // Focus Index state logic
+    String focusState = 'Bad';
+    Color focusColor = theme.colorScheme.error;
+    String focusMsg = 'High light intensity detected. This may reduce focus.';
+    IconData focusIcon = Icons.warning_amber_rounded;
+    
+    if (currentLight == LightExposureClass.dark || currentLight == LightExposureClass.dim) {
+      focusState = 'Good';
+      focusColor = const Color(0xFF66BB6A); // green
+      focusMsg = 'Low light exposure. Ideal for maintaining good focus.';
+      focusIcon = Icons.check_circle_outline;
+    } else if (currentLight == LightExposureClass.moderate) {
+      focusState = 'Optimal';
+      focusColor = const Color(0xFF42A5F5); // blue
+      focusMsg = 'Moderate light exposure. Optimal conditions for focus.';
+      focusIcon = Icons.info_outline;
+    }
 
-    // Stressful = NOISY, VERY NOISY, or HIGH EXPOSURE // TODO: refine the definition of "healthy" vs "stressful"
-    final bool isStressful = currentEnv == AudioEnvClass.noisy ||
-        currentEnv == AudioEnvClass.veryNoisy ||
-        currentEnv == AudioEnvClass.highExposure;
+    // Stress Index state logic
+    String stressState = 'Bad';
+    Color stressColor = theme.colorScheme.error;
+    String stressMsg = 'Current noise level is detrimental to concentration.';
+    IconData stressIcon = Icons.monitor_heart_outlined;
+    
+    if (currentEnv == AudioEnvClass.veryQuiet || currentEnv == AudioEnvClass.quiet) {
+      stressState = 'Good';
+      stressColor = const Color(0xFF66BB6A);
+      stressMsg = 'Quiet environment supports a calm physiological state.';
+      stressIcon = Icons.check_circle_outline;
+    } else if (currentEnv == AudioEnvClass.moderate || currentEnv == AudioEnvClass.lively || currentEnv == AudioEnvClass.noisy) {
+      stressState = 'Optimal';
+      stressColor = const Color(0xFF42A5F5);
+      stressMsg = 'Moderate noise level provides optimal stimulation without excessive stress.';
+      stressIcon = Icons.info_outline;
+    }
 
     return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // ── Accumulated fatigue ──────────────────────────────────────────
+        const SectionLabel('Concentration Meter'),
+        const SizedBox(height: 6),
+        // ── Focus Index ──────────────────────────────────────────
         AppCard(
-          leftBorderColor:
-              isHighDose ? const Color(0xFFFF9800) : theme.colorScheme.onSurface,
+          leftBorderColor: focusColor,
           padding: const EdgeInsets.all(16),
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Icon(
-                isHighDose
-                    ? Icons.warning_amber_rounded
-                    : Icons.info_outline,
-                color: isHighDose
-                    ? const Color(0xFFFF9800)
-                    : theme.colorScheme.onSurface,
+                focusIcon,
+                color: focusColor,
                 size: 20,
               ),
               const SizedBox(width: 10),
@@ -319,7 +306,7 @@ class _StressPageState extends State<StressPage> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      'Accumulated Fatigue',
+                      'Focus Index: $focusState',
                       style: TextStyle(
                           fontSize:   15,
                           fontWeight: FontWeight.w500,
@@ -327,9 +314,7 @@ class _StressPageState extends State<StressPage> {
                     ),
                     const SizedBox(height: 4),
                     Text(
-                      isHighDose
-                          ? 'High noise dose detected. Consider resting your ears.'
-                          : 'Acoustic dose is within healthy limits.',
+                      focusMsg,
                       style: TextStyle(
                           fontSize: 13,
                           color:    theme.colorScheme.onSurfaceVariant),
@@ -342,20 +327,16 @@ class _StressPageState extends State<StressPage> {
         ),
         const SizedBox(height: 8),
 
-        // ── Stress indicator — aligned to current envClass ────────────────
+        // ── Stress Index ──────────────────────────────────────────────────
         AppCard(
-          leftBorderColor: isStressful
-              ? theme.colorScheme.error
-              : theme.colorScheme.onSurface,
+          leftBorderColor: stressColor,
           padding: const EdgeInsets.all(16),
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Icon(
-                Icons.monitor_heart_outlined,
-                color: isStressful
-                    ? theme.colorScheme.error
-                    : theme.colorScheme.onSurface,
+                stressIcon,
+                color: stressColor,
                 size: 20,
               ),
               const SizedBox(width: 10),
@@ -364,7 +345,7 @@ class _StressPageState extends State<StressPage> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      'Stress Indicator',
+                      'Stress Index: $stressState',
                       style: TextStyle(
                           fontSize:   15,
                           fontWeight: FontWeight.w500,
@@ -372,10 +353,7 @@ class _StressPageState extends State<StressPage> {
                     ),
                     const SizedBox(height: 4),
                     Text(
-                      isStressful
-                          ? 'Current noise level (${currentSpl.toStringAsFixed(1)} dB, ${currentEnv.label}) '
-                              'may elevate physiological stress.'
-                          : 'Current environment (${currentEnv.label}) supports a calm physiological state.',
+                      stressMsg,
                       style: TextStyle(
                           fontSize: 13,
                           color:    theme.colorScheme.onSurfaceVariant),
@@ -390,25 +368,7 @@ class _StressPageState extends State<StressPage> {
     );
   }
 
-  // ── Metric row helper ────────────────────────────────────────────────────────
-  Widget _metricRow(String label, String value, ThemeData theme) {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-      children: [
-        Text(label,
-            style: TextStyle(
-                color: theme.colorScheme.onSurfaceVariant, fontSize: 13)),
-        Text(
-          value,
-          style: TextStyle(
-            color:      theme.colorScheme.onSurface,
-            fontSize:   14,
-            fontWeight: FontWeight.w600,
-          ),
-        ),
-      ],
-    );
-  }
+
 
   /// Derive an AudioEnvClass from a raw dB value for waveform bar colouring.
   AudioEnvClass _dbToEnvClass(double db) {

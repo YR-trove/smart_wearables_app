@@ -6,17 +6,9 @@
 enum MsgType {
   // ── Live-mode packets (ble_live workflow) ─────────────────────────────────
 
-  /// 7-byte IMU metrics packet. Sent every 1 s unconditionally.
-  /// Parse with [LiveImuPacket.fromBytes].
-  imuMetrics(0x50),
-
-  /// 3-byte light metrics packet. Sent every 3 s on value change.
-  /// Parse with [LiveLightPacket.fromBytes].
-  lightMetrics(0x51),
-
-  /// 4-byte mic / audio metrics packet. Sent every 3 s on value change.
-  /// Parse with [LiveMicPacket.fromBytes].
-  micMetrics(0x52),
+  /// 20-byte unified metrics packet. Sent every 500 ms unconditionally (2 Hz).
+  /// Parse with [UnifiedLivePacket.fromBytes].
+  unifiedMetrics(0x55),
 
   /// 2-byte connection-event packet (LIVE_START / LIVE_STOP).
   connectionEvent(0x53),
