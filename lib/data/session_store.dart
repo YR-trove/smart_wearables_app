@@ -218,9 +218,13 @@ class SessionStore extends ChangeNotifier {
     if (_latestUnifiedPacket != null) {
       final oldSteps = _latestUnifiedPacket!.stepCount;
       final newSteps = packet.stepCount;
-      if (newSteps > oldSteps) {
-        final stepDiff = newSteps - oldSteps;
+      
+      int stepDiff = newSteps - oldSteps;
+      if (stepDiff < 0) stepDiff += 65536; // Handle 16-bit hardware counter overflow
+
+      if (stepDiff > 0) {
         _currentSteps += stepDiff;
+        _activityState = 1;
 
         // Distance in km: Step length is roughly Height(cm) * 0.414.
         final heightCm = _currentUser?.heightCm ?? 170.0;
@@ -238,10 +242,7 @@ class SessionStore extends ChangeNotifier {
           bmr = (10 * weightKg) + (6.25 * heightCm) - (5 * age) + 5;
         }
 
-        final met = switch (_activityState) {
-          1 => 3.5, // Active walking
-          _ => 0.0, // Stationary
-        };
+        final met = 3.5; // Active walking
 
         // BMR is calories per day. Convert to calories per minute.
         final bmrPerMin = bmr / 1440.0;
@@ -253,23 +254,20 @@ class SessionStore extends ChangeNotifier {
         final kcalPerStep = kcalPerMin / 100.0;
 
         _totalKcal += (kcalPerStep * stepDiff);
+      } else {
+        _activityState = 0;
       }
+    } else {
+      _activityState = 0;
     }
     
     _latestUnifiedPacket = packet;
     
-    // -- IMU Logic
-    int stepsDiff = packet.stepCount - _currentSteps;
-    if (stepsDiff < 0) stepsDiff += 65536; // handle 16-bit overflow
-    
-    _activityState = (stepsDiff > 0) ? 1 : 0;
-    _currentSteps  = packet.stepCount;
-
     if (_stepsHistory.length >= _maxBufferSize) {
       _stepsHistory.removeAt(0);
       _activityHistory.removeAt(0);
     }
-    _stepsHistory.add(packet.stepCount.toDouble());
+    _stepsHistory.add(_currentSteps.toDouble());
     _activityHistory.add(_activityState.toDouble());
 
     // -- Light Logic
