@@ -2,6 +2,7 @@ import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:smart_wearables_app/theme_provider.dart'; // Adjust path if needed
+import 'package:smart_wearables_app/data/session_store.dart';
 
 class SettingsPage extends StatefulWidget {
   const SettingsPage({super.key});
@@ -18,6 +19,48 @@ class _SettingsPageState extends State<SettingsPage> {
     Color(0xFFF97316), // Orange
     Color(0xFFEF4444), // Red
   ];
+
+  final _ageCtrl    = TextEditingController();
+  final _weightCtrl = TextEditingController();
+  final _heightCtrl = TextEditingController();
+  String? _selectedGender;
+  bool _profileInitialized = false;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (!_profileInitialized) {
+      final user = context.read<SessionStore>().currentUser;
+      if (user != null) {
+        _ageCtrl.text    = user.age?.toString() ?? '';
+        _weightCtrl.text = user.weightKg?.toString() ?? '';
+        _heightCtrl.text = user.heightCm?.toString() ?? '';
+        _selectedGender  = user.gender;
+      }
+      _profileInitialized = true;
+    }
+  }
+
+  @override
+  void dispose() {
+    _ageCtrl.dispose();
+    _weightCtrl.dispose();
+    _heightCtrl.dispose();
+    super.dispose();
+  }
+
+  void _saveProfile() {
+    final user = context.read<SessionStore>().currentUser;
+    if (user != null) {
+      context.read<SessionStore>().updateCurrentUser(
+        name:     user.name,
+        gender:   _selectedGender,
+        age:      int.tryParse(_ageCtrl.text),
+        weightKg: double.tryParse(_weightCtrl.text),
+        heightCm: double.tryParse(_heightCtrl.text),
+      );
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -42,9 +85,92 @@ class _SettingsPageState extends State<SettingsPage> {
       body: ListView(
         padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
         children: [
+          _profileSection(),
+          const SizedBox(height: 24),
           _appearanceSection(),
           const SizedBox(height: 24),
           _aboutSection(),
+        ],
+      ),
+    );
+  }
+
+  Widget _profileSection() {
+    final dividerColor = Theme.of(context).dividerColor.withValues(alpha: 0.1);
+    final onSurfaceColor = Theme.of(context).colorScheme.onSurface;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const SectionLabel('Profile'),
+        const SizedBox(height: 6),
+        AppCard(
+          padding: EdgeInsets.zero,
+          child: Column(
+            children: [
+              _buildProfileRow('Gender', DropdownButtonHideUnderline(
+                child: DropdownButton<String>(
+                  value: _selectedGender,
+                  hint: const Text('Select'),
+                  items: ['Male', 'Female', 'Other'].map((String value) {
+                    return DropdownMenuItem<String>(
+                      value: value,
+                      child: Text(value, style: TextStyle(fontSize: 15, color: onSurfaceColor)),
+                    );
+                  }).toList(),
+                  onChanged: (newValue) {
+                    setState(() { _selectedGender = newValue; });
+                    _saveProfile();
+                  },
+                ),
+              )),
+              Divider(height: 1, thickness: 1, color: dividerColor),
+              _buildProfileInputRow('Age (Years)', _ageCtrl),
+              Divider(height: 1, thickness: 1, color: dividerColor),
+              _buildProfileInputRow('Weight (kg)', _weightCtrl),
+              Divider(height: 1, thickness: 1, color: dividerColor),
+              _buildProfileInputRow('Height (cm)', _heightCtrl),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildProfileInputRow(String label, TextEditingController controller) {
+    return _buildProfileRow(label, SizedBox(
+      width: 100,
+      child: TextField(
+        controller: controller,
+        keyboardType: const TextInputType.numberWithOptions(decimal: true),
+        textAlign: TextAlign.end,
+        decoration: const InputDecoration(
+          border: InputBorder.none,
+          isDense: true,
+          contentPadding: EdgeInsets.zero,
+          hintText: 'Enter',
+        ),
+        onEditingComplete: () {
+          FocusScope.of(context).unfocus();
+          _saveProfile();
+        },
+        onTapOutside: (_) {
+          FocusScope.of(context).unfocus();
+          _saveProfile();
+        },
+      ),
+    ));
+  }
+
+  Widget _buildProfileRow(String label, Widget child) {
+    final onSurfaceColor = Theme.of(context).colorScheme.onSurface;
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text(label, style: TextStyle(fontSize: 15, fontWeight: FontWeight.w500, color: onSurfaceColor)),
+          child,
         ],
       ),
     );

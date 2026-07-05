@@ -116,18 +116,42 @@ class SessionStore extends ChangeNotifier {
 
   Future<void> createUser({
     required String name,
+    String? gender,
     int?    age,
     double? weightKg,
     double? heightCm,
   }) async {
     final user = await _userDao.insert(UserProfile(
       name:      name,
+      gender:    gender,
       age:       age,
       weightKg:  weightKg,
       heightCm:  heightCm,
       createdAt: DateTime.now(),
     ));
     _currentUser = user;
+    notifyListeners();
+  }
+
+  Future<void> updateCurrentUser({
+    String? name,
+    String? gender,
+    int?    age,
+    double? weightKg,
+    double? heightCm,
+  }) async {
+    if (_currentUser == null) return;
+    
+    final updated = _currentUser!.copyWith(
+      name:     name,
+      gender:   gender,
+      age:      age,
+      weightKg: weightKg,
+      heightCm: heightCm,
+    );
+    
+    await _userDao.update(updated);
+    _currentUser = updated;
     notifyListeners();
   }
 
@@ -191,6 +215,47 @@ class SessionStore extends ChangeNotifier {
 
     unawaited(_sessionDao.insertUnifiedPacket(packet));
 
+    if (_latestUnifiedPacket != null) {
+      final oldSteps = _latestUnifiedPacket!.stepCount;
+      final newSteps = packet.stepCount;
+      if (newSteps > oldSteps) {
+        final stepDiff = newSteps - oldSteps;
+        _currentSteps += stepDiff;
+
+        // Distance in km: Step length is roughly Height(cm) * 0.414.
+        final heightCm = _currentUser?.heightCm ?? 170.0;
+        _distanceKm = (_currentSteps * heightCm * 0.414) / 100000.0;
+
+        // BMR Calculation using Mifflin-St Jeor equation
+        final weightKg = _currentUser?.weightKg ?? 70.0;
+        final age = _currentUser?.age ?? 30;
+        final gender = _currentUser?.gender?.toLowerCase() ?? 'male';
+
+        double bmr;
+        if (gender == 'female') {
+          bmr = (10 * weightKg) + (6.25 * heightCm) - (5 * age) - 161;
+        } else {
+          bmr = (10 * weightKg) + (6.25 * heightCm) - (5 * age) + 5;
+        }
+
+        final met = switch (_activityState) {
+          1 => 3.5, // Active walking
+          _ => 0.0, // Stationary
+        };
+
+        // BMR is calories per day. Convert to calories per minute.
+        final bmrPerMin = bmr / 1440.0;
+        
+        // Calories burned per minute = MET * BMR per minute
+        final kcalPerMin = met * bmrPerMin;
+
+        // Assuming an average cadence of 100 steps per minute while active:
+        final kcalPerStep = kcalPerMin / 100.0;
+
+        _totalKcal += (kcalPerStep * stepDiff);
+      }
+    }
+    
     _latestUnifiedPacket = packet;
     
     // -- IMU Logic
@@ -199,16 +264,6 @@ class SessionStore extends ChangeNotifier {
     
     _activityState = (stepsDiff > 0) ? 1 : 0;
     _currentSteps  = packet.stepCount;
-
-    final heightCm = _currentUser?.heightCm ?? 170.0;
-    _distanceKm = (_currentSteps * heightCm * 0.414) / 100000.0;
-
-    final weightKg = _currentUser?.weightKg ?? 70.0;
-    final met = switch (_activityState) {
-      1 => 3.5, // Active
-      _ => 0.0, // Stationary
-    };
-    _totalKcal += (met * 3.5 * weightKg) / 12000.0;
 
     if (_stepsHistory.length >= _maxBufferSize) {
       _stepsHistory.removeAt(0);

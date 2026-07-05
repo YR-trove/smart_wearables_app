@@ -1,6 +1,7 @@
 class UserProfile {
   final int?    id;
   final String  name;
+  final String? gender;
   final int?    age;
   final double? weightKg;
   final double? heightCm;
@@ -9,6 +10,7 @@ class UserProfile {
   UserProfile({
     this.id,
     required this.name,
+    this.gender,
     this.age,
     this.weightKg,
     this.heightCm,
@@ -18,6 +20,7 @@ class UserProfile {
   UserProfile copyWith({
     int?    id,
     String? name,
+    String? gender,
     int?    age,
     double? weightKg,
     double? heightCm,
@@ -25,6 +28,7 @@ class UserProfile {
   }) => UserProfile(
     id:        id        ?? this.id,
     name:      name      ?? this.name,
+    gender:    gender    ?? this.gender,
     age:       age       ?? this.age,
     weightKg:  weightKg  ?? this.weightKg,
     heightCm:  heightCm  ?? this.heightCm,
@@ -34,6 +38,7 @@ class UserProfile {
   Map<String, dynamic> toMap() => {
     if (id != null) 'id': id,
     'name':       name,
+    'gender':     gender,
     'age':        age,
     'weight_kg':  weightKg,
     'height_cm':  heightCm,
@@ -43,6 +48,7 @@ class UserProfile {
   factory UserProfile.fromMap(Map<String, dynamic> m) => UserProfile(
     id:        m['id']         as int?,
     name:      m['name']       as String,
+    gender:    m['gender']     as String?,
     age:       m['age']        as int?,
     weightKg:  m['weight_kg']  as double?,
     heightCm:  m['height_cm']  as double?,

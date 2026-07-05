@@ -58,7 +58,7 @@ class _LightPageState extends State<LightPage> {
 
     // ── Night blue-light accumulator from SessionStore ──────────────────────
     final nightBlueSecs = store.nightBlueLightSeconds;
-    const int nightBlueLimitSecs = 3600; // 60 minutes // TODO: update the time threshold
+    const int nightBlueLimitSecs = 3600; // 60 minutes
 
     
     // Show one-time popup when 60 min threshold is reached

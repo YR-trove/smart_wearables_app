@@ -428,6 +428,7 @@ class _UserOnboardingPageState extends State<UserOnboardingPage> {
   final _ageCtrl    = TextEditingController();
   final _weightCtrl = TextEditingController();
   final _heightCtrl = TextEditingController();
+  String? _selectedGender;
   bool _saving = false;
 
   Future<void> _save() async {
@@ -435,6 +436,7 @@ class _UserOnboardingPageState extends State<UserOnboardingPage> {
     setState(() => _saving = true);
     await widget.store.createUser(
       name:     _nameCtrl.text.trim(),
+      gender:   _selectedGender,
       age:      int.tryParse(_ageCtrl.text),
       weightKg: double.tryParse(_weightCtrl.text),
       heightCm: double.tryParse(_heightCtrl.text),
@@ -461,13 +463,14 @@ class _UserOnboardingPageState extends State<UserOnboardingPage> {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               const Text('Welcome!',
-                style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
+                style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold)),
               const SizedBox(height: 8),
               const Text(
-                'Create your profile to start tracking your health data.',
-                style: TextStyle(color: Colors.grey),
+                'Let\'s set up your profile so the app can accurately estimate your distance covered and calories burned.',
+                style: TextStyle(color: Colors.grey, fontSize: 15),
               ),
               const SizedBox(height: 32),
+              
               TextFormField(
                 controller: _nameCtrl,
                 decoration: const InputDecoration(
@@ -480,55 +483,61 @@ class _UserOnboardingPageState extends State<UserOnboardingPage> {
                     (v == null || v.trim().isEmpty) ? 'Name is required' : null,
               ),
               const SizedBox(height: 16),
-              TextFormField(
-                controller: _ageCtrl,
+              
+              DropdownButtonFormField<String>(
+                initialValue: _selectedGender,
                 decoration: const InputDecoration(
-                  labelText: 'Age (optional)',
+                  labelText: 'Gender',
                   border: OutlineInputBorder(),
-                  prefixIcon: Icon(Icons.cake_outlined),
-                  suffixText: 'years',
+                  prefixIcon: Icon(Icons.people_outline),
                 ),
-                keyboardType: TextInputType.number,
-                validator: (v) {
-                  if (v == null || v.isEmpty) return null;
-                  final n = int.tryParse(v);
-                  if (n == null || n < 1 || n > 130) return 'Enter a valid age';
-                  return null;
+                items: ['Male', 'Female', 'Other'].map((String value) {
+                  return DropdownMenuItem<String>(
+                    value: value,
+                    child: Text(value),
+                  );
+                }).toList(),
+                onChanged: (newValue) {
+                  setState(() { _selectedGender = newValue; });
                 },
               ),
               const SizedBox(height: 16),
-              TextFormField(
-                controller: _weightCtrl,
-                decoration: const InputDecoration(
-                  labelText: 'Weight (optional)',
-                  border: OutlineInputBorder(),
-                  prefixIcon: Icon(Icons.monitor_weight_outlined),
-                  suffixText: 'kg',
-                ),
-                keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                validator: (v) {
-                  if (v == null || v.isEmpty) return null;
-                  final n = double.tryParse(v);
-                  if (n == null || n < 1 || n > 500) return 'Enter a valid weight';
-                  return null;
-                },
+              
+              Row(
+                children: [
+                  Expanded(
+                    child: TextFormField(
+                      controller: _ageCtrl,
+                      decoration: const InputDecoration(
+                        labelText: 'Age',
+                        border: OutlineInputBorder(),
+                      ),
+                      keyboardType: TextInputType.number,
+                    ),
+                  ),
+                  const SizedBox(width: 16),
+                  Expanded(
+                    child: TextFormField(
+                      controller: _weightCtrl,
+                      decoration: const InputDecoration(
+                        labelText: 'Weight (kg)',
+                        border: OutlineInputBorder(),
+                      ),
+                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                    ),
+                  ),
+                ],
               ),
               const SizedBox(height: 16),
+              
               TextFormField(
                 controller: _heightCtrl,
                 decoration: const InputDecoration(
-                  labelText: 'Height (optional)',
+                  labelText: 'Height (cm)',
                   border: OutlineInputBorder(),
                   prefixIcon: Icon(Icons.height),
-                  suffixText: 'cm',
                 ),
                 keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                validator: (v) {
-                  if (v == null || v.isEmpty) return null;
-                  final n = double.tryParse(v);
-                  if (n == null || n < 50 || n > 300) return 'Enter a valid height';
-                  return null;
-                },
               ),
               const SizedBox(height: 32),
               ElevatedButton(

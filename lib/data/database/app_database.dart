@@ -22,7 +22,7 @@ class AppDatabase {
     final path = join(await getDatabasesPath(), 'smart_wearables.db');
     return openDatabase(
       path,
-      version: 8,
+      version: 9,
       onCreate:    _onCreate,
       onUpgrade:   _onUpgrade,
       onConfigure: (db) async {
@@ -40,6 +40,7 @@ class AppDatabase {
       CREATE TABLE users (
         id         INTEGER PRIMARY KEY AUTOINCREMENT,
         name       TEXT    NOT NULL,
+        gender     TEXT,
         age        INTEGER,
         weight_kg  REAL,
         height_cm  REAL,
@@ -75,6 +76,9 @@ class AppDatabase {
       await db.execute('DROP TABLE IF EXISTS live_mic');
       await db.execute('DROP TABLE IF EXISTS unified_telemetry');
       await _createUnifiedTelemetry(db);
+    }
+    if (oldVersion < 9) {
+      await db.execute('ALTER TABLE users ADD COLUMN gender TEXT;');
     }
   }
 
