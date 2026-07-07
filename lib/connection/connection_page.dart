@@ -26,7 +26,7 @@ class ConnectionPage extends StatefulWidget {
 }
 
 class _ConnectionPageState extends State<ConnectionPage> {
-  final String bleDeviceNameFilter = "BLE_SW";
+  final String bleDeviceNameFilter = "BLE_SW_A9";
   final flutterReactiveBle = FlutterReactiveBle();
 
   late StreamSubscription<DiscoveredDevice>      scanStream;
